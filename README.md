@@ -1,3 +1,12 @@
+# Snapmaker Orca + MakerWorld (prévia independente)
+
+Customização do Snapmaker Orca **2.3.6**: aba MakerWorld dentro do fatiador, com encaminhamento dos modelos ao importador existente. Projeto independente, sem afiliação oficial com Snapmaker ou Bambu Lab.
+
+**Em desenvolvimento.** Consulte [o fluxo Windows](../../actions/workflows/makerworld-windows.yml) para o resultado da compilação e os arquivos para baixar. A presença de uma build não significa que o fluxo de login/importação ou a impressão física já foram validados.
+
+[Detalhes e roteiro de teste](docs/MakerWorld-preview.md). Depois de abrir um modelo, selecione a U1 e revise materiais e configurações antes de fatiar. Licença AGPL-3.0, como o projeto original.
+
+---
 
 <h1> <p "font-size:200px;"> Snapmaker Orca</p> </h1>
 

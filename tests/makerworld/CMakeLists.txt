@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(MakerWorldLinkTests LANGUAGES CXX)
+enable_testing()
+add_executable(makerworld_link_tests test_links.cpp)
+target_compile_features(makerworld_link_tests PRIVATE cxx_std_17)
+add_test(NAME makerworld_links COMMAND makerworld_link_tests)

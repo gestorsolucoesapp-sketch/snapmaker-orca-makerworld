@@ -19827,3 +19827,34 @@ msgstr ""
 
 #~ msgid "Printer local connection failed, please try again."
 #~ msgstr "Falha na conexão local da impressora, por favor tente novamente."
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "Forward"
+msgstr "Avançar"
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "Reload"
+msgstr "Recarregar"
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "Open in browser"
+msgstr "Abrir no navegador"
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "Open a model with 'Open in Bambu Studio'. Then select your U1 printer and review the filament mapping before slicing."
+msgstr "Abra um modelo pelo botão “Abrir no Bambu Studio”. Depois selecione a U1 e confira os filamentos antes de fatiar."
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "The embedded browser could not start. Use 'Open in browser' or try again."
+msgstr "Não foi possível iniciar o navegador interno. Use “Abrir no navegador” ou tente novamente."
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "The page could not load. Try Reload or Open in browser."
+msgstr "Não foi possível carregar a página. Tente Recarregar ou Abrir no navegador."
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "This model link is not supported. Download its 3MF file and open it from the File menu."
+msgstr "Este link de modelo não é compatível. Baixe o arquivo 3MF e abra-o pelo menu Arquivo."
+
+#: src/slic3r/GUI/MakerWorldPanel.cpp
+msgid "Opening a MakerWorld model"
+msgstr "Abrindo um modelo do MakerWorld"

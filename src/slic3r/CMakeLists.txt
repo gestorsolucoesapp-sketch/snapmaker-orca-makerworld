@@ -560,6 +560,9 @@ set(SLIC3R_GUI_SOURCES
     GUI/WebPreprintDialog.cpp
     GUI/WebUrlDialog.cpp
     GUI/WebUrlDialog.hpp
+    GUI/MakerWorldPanel.cpp
+    GUI/MakerWorldPanel.hpp
+    GUI/MakerWorldLink.hpp
     pchheader.cpp
     pchheader.hpp
     Utils/ASCIIFolding.cpp
