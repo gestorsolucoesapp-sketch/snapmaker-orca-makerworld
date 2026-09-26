@@ -1,0 +1,104 @@
+name: Build MakerWorld preview for Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: makerworld-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: true
+          ref: ${{ github.ref_name }}
+      - name: Apply and publish the reviewed customization
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath 'makerworld-v2.3.6.patch') {
+            git apply --check --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
+            if ($LASTEXITCODE -ne 0) { throw 'Customization does not match the source version' }
+            git apply --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
+            if ($LASTEXITCODE -ne 0) { throw 'Could not apply customization' }
+            git rm -- makerworld-v2.3.6.patch
+            # This fork only builds manually; remove inherited scheduled/release workflows.
+            $others = git ls-files .github/workflows
+            foreach ($file in $others) {
+              if ($file -ne '.github/workflows/makerworld-windows.yml') { git rm -- $file }
+            }
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- src/slic3r localization/i18n/pt_BR tests/makerworld docs/MakerWorld-preview.md README.md
+            git commit -m 'Add native MakerWorld tab to Snapmaker Orca 2.3.6'
+            if ($LASTEXITCODE -ne 0) { throw 'Could not save customization commit' }
+            git push origin "HEAD:$env:GITHUB_REF_NAME"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not publish customization commit' }
+          }
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: '~3.28.0'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install dependency build tools
+        shell: pwsh
+        run: |
+          choco install strawberryperl -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Perl installation failed' }
+          'C:\Strawberry\perl\bin' >> $env:GITHUB_PATH
+      - name: Test MakerWorld links
+        shell: pwsh
+        run: |
+          cmake -S tests/makerworld -B build-link-tests
+          if ($LASTEXITCODE -ne 0) { throw 'Test configuration failed' }
+          cmake --build build-link-tests --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Test build failed' }
+          ctest --test-dir build-link-tests -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Link tests failed' }
+      - uses: actions/cache/restore@v4
+        id: deps-cache
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: makerworld-win2022-v236-${{ hashFiles('deps/**/*.cmake', 'deps/CMakeLists.txt') }}
+      - name: Build dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $deps = "$env:GITHUB_WORKSPACE/deps/build/OrcaSlicer_dep"
+          cmake -S deps -B deps/build -G 'Visual Studio 17 2022' -A x64 "-DDESTDIR=$deps" -DCMAKE_BUILD_TYPE=Release -DDEP_DEBUG=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency configuration failed' }
+          cmake --build deps/build --config Release --target deps --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency build failed' }
+      - uses: actions/cache/save@v4
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: ${{ steps.deps-cache.outputs.cache-primary-key }}
+      - name: Build preview
+        shell: pwsh
+        run: |
+          $deps = "$env:GITHUB_WORKSPACE/deps/build/OrcaSlicer_dep/usr/local"
+          $sdk = "$($env:WindowsSdkDir)Include\$($env:WindowsSDKVersion)"
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DBBL_RELEASE_TO_PUBLIC=1 -DORCA_TOOLS=ON "-DCMAKE_PREFIX_PATH=$deps" "-DCMAKE_INSTALL_PREFIX=$env:GITHUB_WORKSPACE/build/Snapmaker_Orca" -DCMAKE_BUILD_TYPE=Release "-DWIN10SDK_PATH=$sdk"
+          if ($LASTEXITCODE -ne 0) { throw 'Application configuration failed' }
+          cmake --build build --config Release --target ALL_BUILD --parallel 3
+          if ($LASTEXITCODE -ne 0) { throw 'Application build failed' }
+          & .\scripts\run_gettext.bat
+          if ($LASTEXITCODE -ne 0) { throw 'Translation build failed' }
+          cmake --build build --target install --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Application packaging failed' }
+          git rev-parse HEAD | Set-Content build/Snapmaker_Orca/SOURCE-COMMIT.txt
+          Copy-Item docs/MakerWorld-preview.md build/Snapmaker_Orca/LEIA-ME-MakerWorld.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Snapmaker-Orca-2.3.6-MakerWorld-preview-Windows
+          path: build/Snapmaker_Orca/
+          if-no-files-found: error
+          retention-days: 14
