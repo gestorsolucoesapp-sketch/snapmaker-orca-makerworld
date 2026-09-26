@@ -25,11 +25,14 @@ jobs:
         shell: pwsh
         run: |
           if (Test-Path -LiteralPath 'makerworld-v2.3.6.patch') {
+            $patchFile = (Resolve-Path makerworld-v2.3.6.patch).Path
+            $patchText = [IO.File]::ReadAllText($patchFile)
+            [IO.File]::WriteAllText($patchFile, $patchText.Replace("`r`n", "`n"), [Text.UTF8Encoding]::new($false))
             git apply --check --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
             if ($LASTEXITCODE -ne 0) { throw 'Customization does not match the source version' }
             git apply --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
             if ($LASTEXITCODE -ne 0) { throw 'Could not apply customization' }
-            git rm -- makerworld-v2.3.6.patch
+            git rm -f -- makerworld-v2.3.6.patch
             # This fork only builds manually; remove inherited scheduled/release workflows.
             $others = git ls-files .github/workflows
             foreach ($file in $others) {
