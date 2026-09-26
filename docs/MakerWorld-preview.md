@@ -36,7 +36,9 @@ Reservar espaço para dependências e arquivos intermediários; uma compilação
 O fluxo `.github/workflows/makerworld-windows.yml` foi preparado para execução
 manual em um repositório GitHub com estas alterações. Ele testa os links,
 compila dependências e aplicativo e guarda um artefato portátil. Não publica
-release, não envia código a outro repositório e não foi executado nesta sessão.
+release e não envia código a outro repositório. Na primeira execução, aplica o
+pacote de alterações e salva o código-fonte neste mesmo repositório antes de
+compilar. Consulte a aba Actions para o resultado de cada execução.
 Custos e limites dependem da conta GitHub usada.
 
 Para testes independentes, sem dependências do fatiador:
