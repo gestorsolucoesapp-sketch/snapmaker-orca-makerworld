@@ -1,0 +1,328 @@
+diff --git a/MAKERWORLD-PREVIEW.md b/MAKERWORLD-PREVIEW.md
+new file mode 100644
+index 0000000..f3a0945
+--- /dev/null
++++ b/MAKERWORLD-PREVIEW.md
+@@ -0,0 +1,19 @@
++# Orion U1 Preview para iPhone
++
++Versão experimental independente baseada no SnapSlice de mon593-dot (MIT), com Kiri:Moto e demais licenças preservadas. Não é um aplicativo oficial Snapmaker, Bambu Lab ou MakerWorld.
++
++## Usar
++
++Em Models, toque em **MakerWorld — abrir e importar**. Entre na sua conta no site, escolha um modelo e use Abrir no Bambu Studio ou Baixar 3MF. O download é importado para Prepare. Se o site não oferecer essas ações, baixe o STL/3MF no Safari e use Import from Files.
++
++A primeira versão aceita arquivos de até 50 MB. Os perfis Bambu, modificadores e todas as variantes 3MF não são convertidos automaticamente: confira geometria, escala, cores T1–T4 e materiais da U1. O motor é Kiri:Moto, não o Snapmaker Orca do computador. O app não inicia uma impressão ao importar. A conexão com a U1 é pela rede local.
++
++## Instalar pelo Windows
++
++O GitHub Actions compila o app para aparelho físico e entrega `Orion-U1-MakerWorld-unsigned.ipa`. Esse arquivo ainda precisa ser assinado para o seu iPhone pelo AltStore Classic/AltServer. Não pode ser instalado apenas tocando nele no navegador.
++
++Siga o guia oficial: https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows
++
++Use sua própria conta Apple no instalador; não envie senha pelo chat nem a coloque no GitHub. Importe o IPA pelo botão + de My Apps no AltStore. Com conta gratuita, renove a instalação dentro de 7 dias usando AltServer no computador. Depois da instalação, o fatiamento é local no telefone. A instalação e a impressão real precisam ser validadas no aparelho do usuário.
++
++O workflow usa o Xcode disponível no runner; verifique o iOS mínimo informado junto do artefato antes de instalar. Não é necessário um Mac pessoal. O projeto original e as licenças permanecem no código-fonte.
+diff --git a/ios/Resources/AppInfo.plist b/ios/Resources/AppInfo.plist
+index dffaee1..5c3690f 100644
+--- a/ios/Resources/AppInfo.plist
++++ b/ios/Resources/AppInfo.plist
+@@ -5,7 +5,7 @@
+ 	<key>CFBundleDevelopmentRegion</key>
+ 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+ 	<key>CFBundleDisplayName</key>
+-	<string>SnapSlice</string>
++	<string>Orion U1 Preview</string>
+ 	<key>CFBundleDocumentTypes</key>
+ 	<array>
+ 		<dict>
+diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+index 77971bb..2154078 100644
+--- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
++++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+@@ -15,6 +15,7 @@
+ 		A114A114A114A114A114A114 /* KiriSliceEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B115B115B115B115B115B115 /* KiriSliceEngine.swift */; };
+ 		A115A115A115A115A115A115 /* KiriGCodePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B116B116B116B116B116B116 /* KiriGCodePreview.swift */; };
+ 		A116A116A116A116A116A116 /* KiriEngine in Resources */ = {isa = PBXBuildFile; fileRef = B117B117B117B117B117B117 /* KiriEngine */; };
++		AA20AA20AA20AA20AA20AA20 /* MakerWorldBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20BB20BB20BB20BB20BB20; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXFileReference section */
+@@ -27,6 +28,7 @@
+ 		B115B115B115B115B115B115 /* KiriSliceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiriSliceEngine.swift; sourceTree = "<group>"; };
+ 		B116B116B116B116B116B116 /* KiriGCodePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiriGCodePreview.swift; sourceTree = "<group>"; };
+ 		B117B117B117B117B117B117 /* KiriEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; path = KiriEngine; sourceTree = "<group>"; };
++		BB20BB20BB20BB20BB20BB20 /* MakerWorldBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakerWorldBrowser.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -54,6 +56,7 @@
+ 			children = (
+ 				B101B101B101B101B101B101 /* SnapSliceNativeHarnessApp.swift */,
+ 				B102B102B102B102B102B102 /* ContentView.swift */,
++				BB20BB20BB20BB20BB20BB20 /* MakerWorldBrowser.swift */,
+ 				B115B115B115B115B115B115 /* KiriSliceEngine.swift */,
+ 				B116B116B116B116B116B116 /* KiriGCodePreview.swift */,
+ 			);
+@@ -153,6 +156,7 @@
+ 			files = (
+ 				A101A101A101A101A101A101 /* SnapSliceNativeHarnessApp.swift in Sources */,
+ 				A102A102A102A102A102A102 /* ContentView.swift in Sources */,
++				AA20AA20AA20AA20AA20AA20 /* MakerWorldBrowser.swift in Sources */,
+ 				A114A114A114A114A114A114 /* KiriSliceEngine.swift in Sources */,
+ 				A115A115A115A115A115A115 /* KiriGCodePreview.swift in Sources */,
+ 			);
+@@ -267,7 +271,7 @@
+ 				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
+ 				MARKETING_VERSION = 2.0;
+ 				OTHER_LDFLAGS = "$(inherited)";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
++				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+ 				SUPPORTS_MACCATALYST = NO;
+@@ -295,7 +299,7 @@
+ 				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
+ 				MARKETING_VERSION = 2.0;
+ 				OTHER_LDFLAGS = "$(inherited)";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
++				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+ 				SUPPORTS_MACCATALYST = NO;
+diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
+index 394d8c2..bba8c73 100644
+--- a/ios/SnapSliceNativeHarness/ContentView.swift
++++ b/ios/SnapSliceNativeHarness/ContentView.swift
+@@ -1243,7 +1243,16 @@ struct ContentView: View {
+                     }.buttonStyle(.borderedProminent)
+                 }.snapCard()
+                 Text("Explore repositories").font(.headline).padding(.horizontal, 4)
+-                repositoryLink("MakerWorld", subtitle: "Multicolor projects and print profiles", icon: "paintpalette.fill", url: "https://makerworld.com/")
++                NavigationLink {
++                    MakerWorldBrowser { url in
++                        model.importModel(.success([url]))
++                        selectedTab = 2
++                    }
++                } label: {
++                    Label("MakerWorld — abrir e importar", systemImage: "globe")
++                        .frame(maxWidth: .infinity, alignment: .leading)
++                }.buttonStyle(.borderedProminent)
++                .disabled(model.isSlicing || model.isUploading || model.isStartingPrint || model.isOpeningJob)
+                 repositoryLink("Printables", subtitle: "Models from makers and designers", icon: "cube.fill", url: "https://www.printables.com/")
+                 repositoryLink("Thingiverse", subtitle: "Community models and remixes", icon: "shippingbox.fill", url: "https://www.thingiverse.com/")
+                 repositoryLink("Thangs", subtitle: "Search and discover 3D models", icon: "magnifyingglass", url: "https://thangs.com/")
+diff --git a/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift b/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift
+new file mode 100644
+index 0000000..4ad114f
+--- /dev/null
++++ b/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift
+@@ -0,0 +1,179 @@
++import SwiftUI
++import WebKit
++
++// No native script bridge is exposed to the remote website.
++enum MakerWorldLinks {
++    static func trusted(_ url: URL, domains: [String]) -> Bool {
++        guard url.scheme?.lowercased() == "https", url.user == nil, url.password == nil,
++              url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
++        return domains.contains { host == $0 || host.hasSuffix("." + $0) }
++    }
++    static func isPage(_ url: URL) -> Bool { trusted(url, domains: ["makerworld.com"]) }
++    static func isDownload(_ url: URL) -> Bool {
++        trusted(url, domains: ["makerworld.com", "bblmw.com", "bambulab.com", "bblcdn.com"])
++    }
++    static func modelURL(_ link: URL) -> URL? {
++        guard link.absoluteString.count <= 65536,
++              ["bambustudio", "bambustudioopen"].contains(link.scheme?.lowercased() ?? ""),
++              let parts = URLComponents(url: link, resolvingAgainstBaseURL: false),
++              parts.host?.lowercased() == "open", ["", "/"].contains(parts.path),
++              let values = parts.queryItems?.filter({ $0.name == "file" }), values.count == 1,
++              let value = values.first?.value, let url = URL(string: value), isDownload(url) else { return nil }
++        return url
++    }
++}
++
++@MainActor
++final class MakerWorldBrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
++    @Published var status = "Abra um modelo e escolha Abrir no Bambu Studio ou Baixar 3MF."
++    @Published var downloading = false
++    let webView: WKWebView
++    var onImport: ((URL) -> Void)?
++    private var destinations: [ObjectIdentifier: URL] = [:]
++
++    override init() {
++        let config = WKWebViewConfiguration()
++        config.websiteDataStore = .default()
++        webView = WKWebView(frame: .zero, configuration: config)
++        super.init()
++        webView.navigationDelegate = self
++        webView.uiDelegate = self
++        webView.allowsBackForwardNavigationGestures = true
++        // MakerWorld's desktop view exposes the Studio/3MF actions on iPhone.
++        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
++        home()
++    }
++    func home() { webView.load(URLRequest(url: URL(string: "https://makerworld.com/pt")!)) }
++
++    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
++                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
++        guard let url = action.request.url else { decisionHandler(.cancel); return }
++        if ["bambustudio", "bambustudioopen"].contains(url.scheme?.lowercased() ?? "") {
++            decisionHandler(.cancel)
++            guard let page = webView.url, MakerWorldLinks.isPage(page),
++                  let download = MakerWorldLinks.modelURL(url) else {
++                status = "Link não compatível. Use Baixar 3MF e depois Importar de Arquivos."
++                return
++            }
++            guard !downloading else { return }
++            downloading = true
++            status = "Baixando modelo…"
++            webView.startDownload(using: URLRequest(url: download)) { [weak self] task in task.delegate = self }
++            return
++        }
++        guard url.scheme == "https" || url.absoluteString == "about:blank" else {
++            status = "Use o download 3MF do site para importar o modelo."
++            decisionHandler(.cancel); return
++        }
++        if action.shouldPerformDownload {
++            guard MakerWorldLinks.isDownload(url), !downloading else { decisionHandler(.cancel); return }
++            downloading = true
++            status = "Baixando modelo…"
++            decisionHandler(.download)
++        } else { decisionHandler(.allow) }
++    }
++
++    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
++                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
++        if !response.canShowMIMEType {
++            guard let url = response.response.url, MakerWorldLinks.isDownload(url), !downloading else {
++                decisionHandler(.cancel); return
++            }
++            downloading = true
++            status = "Baixando modelo…"
++            decisionHandler(.download)
++        } else { decisionHandler(.allow) }
++    }
++    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
++        download.delegate = self
++    }
++    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
++        download.delegate = self
++    }
++    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
++                 for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
++        if action.targetFrame == nil, let url = action.request.url, url.scheme == "https" {
++            webView.load(action.request)
++        }
++        return nil
++    }
++    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
++        if (error as NSError).code != NSURLErrorCancelled {
++            status = "Não foi possível abrir a página. Recarregue ou importe pelo app Arquivos."
++        }
++    }
++
++    func download(_ download: WKDownload, willPerformHTTPRedirection response: HTTPURLResponse,
++                  newRequest request: URLRequest, decisionHandler: @escaping (WKDownload.RedirectPolicy) -> Void) {
++        let allowed = request.url.map(MakerWorldLinks.isDownload) ?? false
++        if !allowed { downloading = false; status = "Destino do download não reconhecido. Use o app Arquivos." }
++        decisionHandler(allowed ? .allow : .cancel)
++    }
++    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
++                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
++        let name = (suggestedFilename as NSString).lastPathComponent
++        let ext = (name as NSString).pathExtension.lowercased()
++        guard let url = response.url, MakerWorldLinks.isDownload(url),
++              ["3mf", "stl"].contains(ext), response.expectedContentLength <= 50_000_000,
++              (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true else {
++            downloading = false
++            status = "Escolha um arquivo STL ou 3MF de até 50 MB. Downloads ZIP não são importados."
++            completionHandler(nil); return
++        }
++        do {
++            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MakerWorld-" + UUID().uuidString)
++            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
++            let destination = folder.appendingPathComponent(name)
++            destinations[ObjectIdentifier(download)] = destination
++            completionHandler(destination)
++        } catch {
++            downloading = false; status = "Não foi possível salvar o modelo."; completionHandler(nil)
++        }
++    }
++    func downloadDidFinish(_ download: WKDownload) {
++        downloading = false
++        guard let file = destinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
++        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
++        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
++        guard size > 0, size <= 50_000_000 else { status = "Escolha um modelo de até 50 MB."; return }
++        status = "Download concluído. Confira cores, materiais e ajustes para a U1 em Prepare."
++        onImport?(file)
++    }
++    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
++        downloading = false
++        if let file = destinations.removeValue(forKey: ObjectIdentifier(download)) {
++            try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
++        }
++        status = "Download não concluído. Tente novamente ou use Importar de Arquivos."
++    }
++}
++
++private struct MakerWorldWebView: UIViewRepresentable {
++    let browser: MakerWorldBrowserModel
++    func makeUIView(context: Context) -> WKWebView { browser.webView }
++    func updateUIView(_ uiView: WKWebView, context: Context) { }
++}
++
++struct MakerWorldBrowser: View {
++    @StateObject private var browser = MakerWorldBrowserModel()
++    let onImport: (URL) -> Void
++    var body: some View {
++        VStack(spacing: 8) {
++            HStack {
++                Button { browser.webView.goBack() } label: { Image(systemName: "chevron.left") }.accessibilityLabel("Voltar")
++                Spacer()
++                Button("MakerWorld") { browser.home() }
++                Spacer()
++                Button { browser.webView.reload() } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Recarregar")
++            }.padding(.horizontal)
++            if browser.downloading { ProgressView("Baixando…") }
++            Text(browser.status).font(.caption).padding(.horizontal)
++            Text("Perfis Bambu não são convertidos. Confira os ajustes da U1 antes de fatiar.")
++                .font(.caption2).foregroundStyle(.secondary).padding(.horizontal)
++            MakerWorldWebView(browser: browser)
++        }
++        .navigationTitle("MakerWorld")
++        .navigationBarTitleDisplayMode(.inline)
++        .onAppear { browser.onImport = onImport }
++    }
++}
+diff --git a/ios/Tools/MakerWorldLinkTests.swift b/ios/Tools/MakerWorldLinkTests.swift
+new file mode 100644
+index 0000000..6907928
+--- /dev/null
++++ b/ios/Tools/MakerWorldLinkTests.swift
+@@ -0,0 +1,23 @@
++import Foundation
++
++@main
++struct MakerWorldLinkTests {
++    static func main() {
++        let good = "https://makerworld.bblmw.com/model/test.3mf?token=a%2Bb&expires=123"
++        var parts = URLComponents(string: "bambustudio://open")!
++        parts.queryItems = [URLQueryItem(name: "file", value: good)]
++        precondition(MakerWorldLinks.modelURL(parts.url!)?.absoluteString == good)
++        for bad in ["http://makerworld.com/a.3mf", "https://makerworld.com.evil.test/a.3mf",
++                    "https://evil.test/a.3mf", "https://user@makerworld.com/a.3mf",
++                    "https://makerworld.com:8080/a.3mf", "file:///a.3mf"] {
++            parts.queryItems = [URLQueryItem(name: "file", value: bad)]
++            precondition(MakerWorldLinks.modelURL(parts.url!) == nil)
++        }
++        parts.queryItems = [URLQueryItem(name: "file", value: good), URLQueryItem(name: "file", value: good)]
++        precondition(MakerWorldLinks.modelURL(parts.url!) == nil)
++        precondition(MakerWorldLinks.modelURL(URL(string: "bambustudio://other?file=x")!) == nil)
++        precondition(MakerWorldLinks.isPage(URL(string: "https://makerworld.com/pt/models/123")!))
++        precondition(!MakerWorldLinks.isPage(URL(string: "https://bblmw.com/")!))
++        print("MakerWorld link validation passed (11 checks)")
++    }
++}
