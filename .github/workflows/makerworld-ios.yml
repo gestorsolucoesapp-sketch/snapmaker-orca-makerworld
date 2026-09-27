@@ -27,6 +27,9 @@ jobs:
       - name: Test slicing placement
         working-directory: source/engine
         run: |
+          npm ci --ignore-scripts
+          node test-model-xml.mjs
+          node test-preview-bridge.mjs
           node test-v2-placement.mjs
       - name: Test MakerWorld links
         run: |
@@ -38,6 +41,10 @@ jobs:
           PY
           swiftc /tmp/MakerWorldLinks.swift source/ios/Tools/MakerWorldLinkTests.swift -o /tmp/makerworld-tests
           /tmp/makerworld-tests
+      - name: Test WebKit preview and slicing
+        run: |
+          swiftc -framework AppKit -framework WebKit source/ios/Tools/KiriSmokeTest.swift -o /tmp/kiri-smoke
+          /tmp/kiri-smoke source/ios/Resources/KiriEngine source/ios/Resources/TestModels/cube-millimeter.3mf
       - name: Build iPhone app without signing
         run: |
           set -o pipefail
