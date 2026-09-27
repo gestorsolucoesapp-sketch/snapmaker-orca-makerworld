@@ -3373,7 +3373,7 @@ index 2316af1..c1ceeb5 100644
 +   *)
  */
 diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
-index 77971bb..6fc9895 100644
+index 77971bb..948314d 100644
 --- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 +++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 @@ -15,6 +15,7 @@
@@ -3413,7 +3413,7 @@ index 77971bb..6fc9895 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 16;
-+				CURRENT_PROJECT_VERSION = 17;
++				CURRENT_PROJECT_VERSION = 18;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
 -				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
@@ -3426,7 +3426,7 @@ index 77971bb..6fc9895 100644
 -				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 -				MARKETING_VERSION = 2.0;
 +				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-+				MARKETING_VERSION = 2.0.1;
++				MARKETING_VERSION = 2.0.2;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
 +				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
@@ -3438,7 +3438,7 @@ index 77971bb..6fc9895 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 16;
-+				CURRENT_PROJECT_VERSION = 17;
++				CURRENT_PROJECT_VERSION = 18;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
 -				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
@@ -3451,7 +3451,7 @@ index 77971bb..6fc9895 100644
 -				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 -				MARKETING_VERSION = 2.0;
 +				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-+				MARKETING_VERSION = 2.0.1;
++				MARKETING_VERSION = 2.0.2;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
 +				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
@@ -3459,10 +3459,18 @@ index 77971bb..6fc9895 100644
  				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
  				SUPPORTS_MACCATALYST = NO;
 diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
-index 394d8c2..bba8c73 100644
+index 394d8c2..c97759b 100644
 --- a/ios/SnapSliceNativeHarness/ContentView.swift
 +++ b/ios/SnapSliceNativeHarness/ContentView.swift
-@@ -1243,7 +1243,16 @@ struct ContentView: View {
+@@ -2,6 +2,7 @@ import SwiftUI
+ import Combine
+ import UniformTypeIdentifiers
+ import Darwin
++import SafariServices
+ 
+ enum SliceQuality: String, CaseIterable, Identifiable, Codable {
+     case fine = "Fine", standard = "Standard", draft = "Draft"
+@@ -1243,7 +1244,16 @@ struct ContentView: View {
                      }.buttonStyle(.borderedProminent)
                  }.snapCard()
                  Text("Explore repositories").font(.headline).padding(.horizontal, 4)
@@ -3480,6 +3488,86 @@ index 394d8c2..bba8c73 100644
                  repositoryLink("Printables", subtitle: "Models from makers and designers", icon: "cube.fill", url: "https://www.printables.com/")
                  repositoryLink("Thingiverse", subtitle: "Community models and remixes", icon: "shippingbox.fill", url: "https://www.thingiverse.com/")
                  repositoryLink("Thangs", subtitle: "Search and discover 3D models", icon: "magnifyingglass", url: "https://thangs.com/")
+@@ -1860,8 +1870,19 @@ private struct U1CameraCard: View {
+     @State private var lastChangedAt: Date?
+     @State private var cameraStatus = "Connecting to camera…"
+     @State private var showingLargeView = false
++    @State private var showingFastVideo = false
++    @State private var fastVideoAvailable = false
++
++    private var fastVideoURL: URL? {
++        guard let snapshotURL,
++              var parts = URLComponents(url: snapshotURL, resolvingAgainstBaseURL: false) else { return nil }
++        parts.path = "/webcam/webrtc"
++        parts.query = nil
++        parts.fragment = nil
++        return parts.url
++    }
+ 
+-    private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil }
++    private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil && !showingFastVideo }
+     private var monitorID: String? { shouldMonitor ? snapshotURL?.absoluteString : nil }
+ 
+     var body: some View {
+@@ -1891,10 +1912,36 @@ private struct U1CameraCard: View {
+                     Text(lastChangedAt, style: .time).monospacedDigit()
+                 }
+             }.font(.caption).foregroundStyle(.secondary)
+-            Text("Camera runs while this screen is open on your local Wi‑Fi.")
++            if fastVideoAvailable {
++                Button { showingFastVideo = true } label: {
++                    Label("Abrir vídeo fluido", systemImage: "play.rectangle.fill")
++                        .frame(maxWidth: .infinity)
++                }.buttonStyle(.borderedProminent)
++                Text("Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
++                    .font(.caption2).foregroundStyle(.secondary)
++            }
++            Text("Camera available on your local network or connected VPN.")
+                 .font(.caption2).foregroundStyle(.secondary)
+         }
+         .snapCard()
++        .task(id: isActive ? fastVideoURL : nil) {
++            fastVideoAvailable = false
++            guard isActive, let fastVideoURL else { return }
++            let request = URLRequest(url: fastVideoURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
++            if let (data, response) = try? await URLSession.shared.data(for: request),
++               !Task.isCancelled,
++               (response as? HTTPURLResponse)?.statusCode == 200,
++               let html = String(data: data, encoding: .utf8),
++               html.contains("RTCPeerConnection") {
++                fastVideoAvailable = true
++            }
++        }
++        .sheet(isPresented: $showingFastVideo) {
++            if let fastVideoURL { U1FastCameraBrowser(url: fastVideoURL).ignoresSafeArea() }
++        }
++        .onChange(of: isActive) { _, active in
++            if !active { showingFastVideo = false }
++        }
+         .task(id: monitorID) {
+             guard shouldMonitor, let snapshotURL else { return }
+             frame = nil
+@@ -1984,6 +2031,20 @@ private struct U1CameraCard: View {
+     }
+ }
+ 
++private struct U1FastCameraBrowser: UIViewControllerRepresentable {
++    let url: URL
++
++    func makeUIViewController(context: Context) -> SFSafariViewController {
++        let configuration = SFSafariViewController.Configuration()
++        configuration.entersReaderIfAvailable = false
++        let controller = SFSafariViewController(url: url, configuration: configuration)
++        controller.dismissButtonStyle = .done
++        return controller
++    }
++
++    func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
++}
++
+ struct SnapSliceOnboarding: View {
+     let finish: () -> Void
+     @State private var page = 0
 diff --git a/ios/SnapSliceNativeHarness/KiriSliceEngine.swift b/ios/SnapSliceNativeHarness/KiriSliceEngine.swift
 index 98d9cf6..05ba623 100644
 --- a/ios/SnapSliceNativeHarness/KiriSliceEngine.swift
