@@ -2160,7 +2160,7 @@ index 0000000..430506f
 +console.log('PASS: packed XML, invalid indices/XML, DTD rejection, and >1M intact triangles');
 diff --git a/engine/test-negative-volumes.mjs b/engine/test-negative-volumes.mjs
 new file mode 100644
-index 0000000..3e1acd7
+index 0000000..aa831db
 --- /dev/null
 +++ b/engine/test-negative-volumes.mjs
 @@ -0,0 +1,37 @@
@@ -2197,7 +2197,7 @@ index 0000000..3e1acd7
 + await sliceWithCuts([2,4,6],layer(5),{post:'TEST',each:r=>{assert.equal(r.checked,true);count++}},[cut]);
 + assert.equal(count,3);
 + console.log('PASS: holes, overlapping cutters, disjoint cutters, complete removal, height bounds, and post-processing order');
-+})();`,resolveDir:root,sourcefile:'negative-regression.js'},bundle:true,write:false,format:'iife',platform:'browser',target:'es2022',plugins:[{name:'symlinks',setup(b){b.onLoad({filter:/[\\/]ext[\\/]earcut\.js$/},async a=>{const s=await readFile(a.path,'utf8');if(s.trim().startsWith('../'))return {contents:await readFile(path.resolve(path.dirname(a.path),s.trim()),'utf8'),loader:'js'};});}}]});
++})();`,resolveDir:root,sourcefile:'negative-regression.js'},bundle:true,write:false,format:'iife',platform:'browser',target:'es2022',plugins:[{name:'earcut-package',setup(b){b.onResolve({filter:/earcut\.js$/},()=>({path:path.join(root,'node_modules/earcut/src/earcut.js')}));}}]});
 +const context=vm.createContext({THREE,assert,console,navigator:{userAgent:'node'}});context.self=context;
 +vm.runInContext(result.outputFiles[0].text,context);
 +await context.testPromise;
