@@ -1,0 +1,73 @@
+name: Build MakerWorld preview for iPhone
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  iphone:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ios-makerworld.patch
+          sparse-checkout-cone-mode: false
+      - name: Fetch pinned SnapSlice source
+        run: |
+          git init source
+          git -C source remote add origin https://github.com/mon593-dot/SnapSlice.git
+          git -C source fetch --depth 1 origin f688f56bc3d432ab732522a2684e4a7393091b07
+          git -C source checkout --detach FETCH_HEAD
+          python3 -c "from pathlib import Path; p=Path('ios-makerworld.patch'); p.write_bytes(p.read_bytes().replace(b'\r\n', b'\n'))"
+          git -C source apply --check ../ios-makerworld.patch
+          git -C source apply ../ios-makerworld.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test slicing placement
+        working-directory: source/engine
+        run: |
+          node test-v2-placement.mjs
+      - name: Test MakerWorld links
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('source/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift').read_text()
+          policy = s[s.index('enum MakerWorldLinks'):s.index('@MainActor')]
+          Path('/tmp/MakerWorldLinks.swift').write_text('import Foundation\n' + policy)
+          PY
+          swiftc /tmp/MakerWorldLinks.swift source/ios/Tools/MakerWorldLinkTests.swift -o /tmp/makerworld-tests
+          /tmp/makerworld-tests
+      - name: Build iPhone app without signing
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild -project source/ios/SnapSliceNativeHarness.xcodeproj \
+            -scheme SnapSliceNativeHarness -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' build | tee build.log
+      - name: Package IPA for AltStore
+        run: |
+          mkdir -p package/Payload artifacts
+          cp -R build/Build/Products/Release-iphoneos/SnapSliceNativeHarness.app package/Payload/
+          cd package
+          zip -qry ../artifacts/Orion-U1-MakerWorld-unsigned.ipa Payload
+          cd ..
+          cp source/MAKERWORLD-PREVIEW.md artifacts/COMO-INSTALAR.md
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' package/Payload/SnapSliceNativeHarness.app/Info.plist > artifacts/IOS-MINIMO.txt
+          echo 'SnapSlice upstream: f688f56bc3d432ab732522a2684e4a7393091b07' > artifacts/SOURCE.txt
+          git rev-parse HEAD >> artifacts/SOURCE.txt
+          git -C source diff --binary > artifacts/ios-makerworld.patch
+          tar --exclude=.git --exclude=node_modules -czf artifacts/source.tar.gz -C source .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Orion-U1-MakerWorld-iPhone
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: iphone-build-log
+          path: build.log
