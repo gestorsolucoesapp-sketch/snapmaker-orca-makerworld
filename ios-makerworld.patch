@@ -37,7 +37,7 @@ index dffaee1..5c3690f 100644
  	<array>
  		<dict>
 diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
-index 77971bb..2154078 100644
+index 77971bb..d7b966f 100644
 --- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 +++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 @@ -15,6 +15,7 @@
@@ -72,8 +72,19 @@ index 77971bb..2154078 100644
  				A114A114A114A114A114A114 /* KiriSliceEngine.swift in Sources */,
  				A115A115A115A115A115A115 /* KiriGCodePreview.swift in Sources */,
  			);
-@@ -267,7 +271,7 @@
- 				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
+@@ -258,16 +262,16 @@
+ 				CURRENT_PROJECT_VERSION = 16;
+ 				GENERATE_INFOPLIST_FILE = NO;
+ 				INFOPLIST_FILE = Resources/AppInfo.plist;
+-				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
++				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
+ 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+ 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+ 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SnapSlice connects directly to your Snapmaker U1 on the local network.";
+ 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+ 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
  				MARKETING_VERSION = 2.0;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
@@ -81,8 +92,19 @@ index 77971bb..2154078 100644
  				PRODUCT_NAME = "$(TARGET_NAME)";
  				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
  				SUPPORTS_MACCATALYST = NO;
-@@ -295,7 +299,7 @@
- 				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
+@@ -286,16 +290,16 @@
+ 				CURRENT_PROJECT_VERSION = 16;
+ 				GENERATE_INFOPLIST_FILE = NO;
+ 				INFOPLIST_FILE = Resources/AppInfo.plist;
+-				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
++				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
+ 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+ 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+ 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "SnapSlice connects directly to your Snapmaker U1 on the local network.";
+ 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+ 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+-				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
++				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
  				MARKETING_VERSION = 2.0;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
@@ -114,10 +136,10 @@ index 394d8c2..bba8c73 100644
                  repositoryLink("Thangs", subtitle: "Search and discover 3D models", icon: "magnifyingglass", url: "https://thangs.com/")
 diff --git a/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift b/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift
 new file mode 100644
-index 0000000..4ad114f
+index 0000000..0c37e43
 --- /dev/null
 +++ b/ios/SnapSliceNativeHarness/MakerWorldBrowser.swift
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,187 @@
 +import SwiftUI
 +import WebKit
 +
@@ -133,7 +155,15 @@ index 0000000..4ad114f
 +        trusted(url, domains: ["makerworld.com", "bblmw.com", "bambulab.com", "bblcdn.com"])
 +    }
 +    static func modelURL(_ link: URL) -> URL? {
-+        guard link.absoluteString.count <= 65536,
++        guard link.absoluteString.count <= 65536 else { return nil }
++        if link.scheme?.lowercased() == "bambustudioopen" {
++            let value = String(link.absoluteString.dropFirst("bambustudioopen://".count))
++                .components(separatedBy: "&name=")[0]
++            guard let decoded = value.removingPercentEncoding,
++                  let url = URL(string: decoded), isDownload(url) else { return nil }
++            return url
++        }
++        guard
 +              ["bambustudio", "bambustudioopen"].contains(link.scheme?.lowercased() ?? ""),
 +              let parts = URLComponents(url: link, resolvingAgainstBaseURL: false),
 +              parts.host?.lowercased() == "open", ["", "/"].contains(parts.path),
@@ -299,10 +329,10 @@ index 0000000..4ad114f
 +}
 diff --git a/ios/Tools/MakerWorldLinkTests.swift b/ios/Tools/MakerWorldLinkTests.swift
 new file mode 100644
-index 0000000..6907928
+index 0000000..1eb18ff
 --- /dev/null
 +++ b/ios/Tools/MakerWorldLinkTests.swift
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,25 @@
 +import Foundation
 +
 +@main
@@ -312,6 +342,8 @@ index 0000000..6907928
 +        var parts = URLComponents(string: "bambustudio://open")!
 +        parts.queryItems = [URLQueryItem(name: "file", value: good)]
 +        precondition(MakerWorldLinks.modelURL(parts.url!)?.absoluteString == good)
++        let encoded = good.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!
++        precondition(MakerWorldLinks.modelURL(URL(string: "bambustudioopen://" + encoded)!)?.absoluteString == good)
 +        for bad in ["http://makerworld.com/a.3mf", "https://makerworld.com.evil.test/a.3mf",
 +                    "https://evil.test/a.3mf", "https://user@makerworld.com/a.3mf",
 +                    "https://makerworld.com:8080/a.3mf", "file:///a.3mf"] {
@@ -323,6 +355,6 @@ index 0000000..6907928
 +        precondition(MakerWorldLinks.modelURL(URL(string: "bambustudio://other?file=x")!) == nil)
 +        precondition(MakerWorldLinks.isPage(URL(string: "https://makerworld.com/pt/models/123")!))
 +        precondition(!MakerWorldLinks.isPage(URL(string: "https://bblmw.com/")!))
-+        print("MakerWorld link validation passed (11 checks)")
++        print("MakerWorld link validation passed (12 checks)")
 +    }
 +}
