@@ -3373,7 +3373,7 @@ index 2316af1..c1ceeb5 100644
 +   *)
  */
 diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
-index 77971bb..948314d 100644
+index 77971bb..b684968 100644
 --- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 +++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 @@ -15,6 +15,7 @@
@@ -3413,7 +3413,7 @@ index 77971bb..948314d 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 16;
-+				CURRENT_PROJECT_VERSION = 18;
++				CURRENT_PROJECT_VERSION = 19;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
 -				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
@@ -3426,7 +3426,7 @@ index 77971bb..948314d 100644
 -				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 -				MARKETING_VERSION = 2.0;
 +				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-+				MARKETING_VERSION = 2.0.2;
++				MARKETING_VERSION = 2.0.3;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
 +				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
@@ -3438,7 +3438,7 @@ index 77971bb..948314d 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 16;
-+				CURRENT_PROJECT_VERSION = 18;
++				CURRENT_PROJECT_VERSION = 19;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
 -				INFOPLIST_KEY_CFBundleDisplayName = SnapSlice;
@@ -3451,7 +3451,7 @@ index 77971bb..948314d 100644
 -				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 -				MARKETING_VERSION = 2.0;
 +				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-+				MARKETING_VERSION = 2.0.2;
++				MARKETING_VERSION = 2.0.3;
  				OTHER_LDFLAGS = "$(inherited)";
 -				PRODUCT_BUNDLE_IDENTIFIER = com.moemin.snapslice.u1;
 +				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
@@ -3459,18 +3459,19 @@ index 77971bb..948314d 100644
  				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
  				SUPPORTS_MACCATALYST = NO;
 diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
-index 394d8c2..c97759b 100644
+index 394d8c2..7e1f295 100644
 --- a/ios/SnapSliceNativeHarness/ContentView.swift
 +++ b/ios/SnapSliceNativeHarness/ContentView.swift
-@@ -2,6 +2,7 @@ import SwiftUI
+@@ -2,6 +2,8 @@ import SwiftUI
  import Combine
  import UniformTypeIdentifiers
  import Darwin
 +import SafariServices
++import WebKit
  
  enum SliceQuality: String, CaseIterable, Identifiable, Codable {
      case fine = "Fine", standard = "Standard", draft = "Draft"
-@@ -1243,7 +1244,16 @@ struct ContentView: View {
+@@ -1243,7 +1245,16 @@ struct ContentView: View {
                      }.buttonStyle(.borderedProminent)
                  }.snapCard()
                  Text("Explore repositories").font(.headline).padding(.horizontal, 4)
@@ -3488,12 +3489,17 @@ index 394d8c2..c97759b 100644
                  repositoryLink("Printables", subtitle: "Models from makers and designers", icon: "cube.fill", url: "https://www.printables.com/")
                  repositoryLink("Thingiverse", subtitle: "Community models and remixes", icon: "shippingbox.fill", url: "https://www.thingiverse.com/")
                  repositoryLink("Thangs", subtitle: "Search and discover 3D models", icon: "magnifyingglass", url: "https://thangs.com/")
-@@ -1860,8 +1870,19 @@ private struct U1CameraCard: View {
+@@ -1860,8 +1871,24 @@ private struct U1CameraCard: View {
      @State private var lastChangedAt: Date?
      @State private var cameraStatus = "Connecting to camera…"
      @State private var showingLargeView = false
 +    @State private var showingFastVideo = false
 +    @State private var fastVideoAvailable = false
++    @State private var fastVideoFailed = false
++    @State private var videoPlaying = false
++    private var usesFastVideo: Bool {
++        isActive && scenePhase == .active && fastVideoAvailable && !fastVideoFailed && !showingFastVideo
++    }
 +
 +    private var fastVideoURL: URL? {
 +        guard let snapshotURL,
@@ -3505,18 +3511,42 @@ index 394d8c2..c97759b 100644
 +    }
  
 -    private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil }
-+    private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil && !showingFastVideo }
++    private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil && !showingFastVideo && !usesFastVideo }
      private var monitorID: String? { shouldMonitor ? snapshotURL?.absoluteString : nil }
  
      var body: some View {
-@@ -1891,10 +1912,36 @@ private struct U1CameraCard: View {
+@@ -1869,7 +1896,7 @@ private struct U1CameraCard: View {
+             HStack {
+                 Label("U1 Camera", systemImage: "video.fill").font(.headline)
+                 Spacer()
+-                if frame != nil {
++                if frame != nil && !usesFastVideo {
+                     Button { showingLargeView = true } label: {
+                         Label("Expand", systemImage: "arrow.up.left.and.arrow.down.right")
+                             .labelStyle(.iconOnly)
+@@ -1881,20 +1908,48 @@ private struct U1CameraCard: View {
+                 .aspectRatio(16 / 9, contentMode: .fit)
+                 .background(.black, in: RoundedRectangle(cornerRadius: 12))
+                 .clipShape(RoundedRectangle(cornerRadius: 12))
+-                .onTapGesture { if frame != nil { showingLargeView = true } }
++                .onTapGesture { if frame != nil && !usesFastVideo { showingLargeView = true } }
+             HStack(spacing: 6) {
+-                Image(systemName: cameraStatus == "Live" ? "circle.fill" : "arrow.clockwise")
+-                    .foregroundStyle(cameraStatus == "Live" ? .green : .orange)
+-                Text(cameraStatus)
++                Image(systemName: (usesFastVideo ? videoPlaying : cameraStatus == "Live") ? "circle.fill" : "arrow.clockwise")
++                    .foregroundStyle((usesFastVideo ? videoPlaying : cameraStatus == "Live") ? .green : .orange)
++                Text(usesFastVideo ? (videoPlaying ? "Vídeo ao vivo" : "Conectando vídeo…") : cameraStatus)
+                 Spacer()
+-                if let lastChangedAt {
++                if let lastChangedAt, !usesFastVideo {
                      Text(lastChangedAt, style: .time).monospacedDigit()
                  }
              }.font(.caption).foregroundStyle(.secondary)
 -            Text("Camera runs while this screen is open on your local Wi‑Fi.")
 +            if fastVideoAvailable {
 +                Button { showingFastVideo = true } label: {
-+                    Label("Abrir vídeo fluido", systemImage: "play.rectangle.fill")
++                    Label("Ampliar vídeo", systemImage: "arrow.up.left.and.arrow.down.right")
 +                        .frame(maxWidth: .infinity)
 +                }.buttonStyle(.borderedProminent)
 +                Text("Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
@@ -3528,6 +3558,8 @@ index 394d8c2..c97759b 100644
          .snapCard()
 +        .task(id: isActive ? fastVideoURL : nil) {
 +            fastVideoAvailable = false
++            fastVideoFailed = false
++            videoPlaying = false
 +            guard isActive, let fastVideoURL else { return }
 +            let request = URLRequest(url: fastVideoURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
 +            if let (data, response) = try? await URLSession.shared.data(for: request),
@@ -3547,10 +3579,84 @@ index 394d8c2..c97759b 100644
          .task(id: monitorID) {
              guard shouldMonitor, let snapshotURL else { return }
              frame = nil
-@@ -1984,6 +2031,20 @@ private struct U1CameraCard: View {
+@@ -1928,7 +1983,12 @@ private struct U1CameraCard: View {
+     }
+ 
+     @ViewBuilder private var cameraImage: some View {
+-        if let frame {
++        if usesFastVideo, let fastVideoURL {
++            U1InlineCamera(url: fastVideoURL) { playing in
++                videoPlaying = playing
++                if !playing { fastVideoFailed = true }
++            }
++        } else if let frame {
+             Image(uiImage: frame).resizable().scaledToFit()
+         } else {
+             VStack(spacing: 10) {
+@@ -1984,6 +2044,80 @@ private struct U1CameraCard: View {
      }
  }
  
++private struct U1InlineCamera: UIViewRepresentable {
++    let url: URL
++    let onPlayback: (Bool) -> Void
++
++    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
++        var onPlayback: (Bool) -> Void
++        init(onPlayback: @escaping (Bool) -> Void) { self.onPlayback = onPlayback }
++        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
++            guard let playing = message.body as? Bool else { return }
++            onPlayback(playing)
++        }
++        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
++            if (error as NSError).code != NSURLErrorCancelled { onPlayback(false) }
++        }
++        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
++            if (error as NSError).code != NSURLErrorCancelled { onPlayback(false) }
++        }
++    }
++
++    func makeCoordinator() -> Coordinator { Coordinator(onPlayback: onPlayback) }
++    func makeUIView(context: Context) -> WKWebView {
++        let config = WKWebViewConfiguration()
++        config.allowsInlineMediaPlayback = true
++        config.mediaTypesRequiringUserActionForPlayback = []
++        config.userContentController.add(context.coordinator, name: "cameraPlayback")
++        // Observe decoded frames, not merely an HTTP success or an ICE connection.
++        let script = """
++        (() => {
++          let lastTime = -1, lastFrame = Date.now(), reported = false;
++          const timer = setInterval(() => {
++            const video = document.querySelector('video');
++            if (video && video.readyState >= 2 && video.currentTime > lastTime) {
++              lastTime = video.currentTime; lastFrame = Date.now();
++              if (!reported) { window.webkit.messageHandlers.cameraPlayback.postMessage(true); reported = true; }
++            }
++            if (Date.now() - lastFrame > 20000) {
++              clearInterval(timer); window.webkit.messageHandlers.cameraPlayback.postMessage(false);
++            }
++          }, 1000);
++          window.addEventListener('pagehide', () => clearInterval(timer), {once:true});
++        })();
++        """
++        config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
++        let view = WKWebView(frame: .zero, configuration: config)
++        view.navigationDelegate = context.coordinator
++        view.isOpaque = false
++        view.backgroundColor = .black
++        view.scrollView.isScrollEnabled = false
++        view.load(URLRequest(url: url, timeoutInterval: 15))
++        return view
++    }
++    func updateUIView(_ view: WKWebView, context: Context) { context.coordinator.onPlayback = onPlayback }
++    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
++        view.configuration.userContentController.removeScriptMessageHandler(forName: "cameraPlayback")
++        view.navigationDelegate = nil
++        view.stopLoading()
++        view.loadHTMLString("", baseURL: nil)
++    }
++}
++
 +private struct U1FastCameraBrowser: UIViewControllerRepresentable {
 +    let url: URL
 +
