@@ -35,6 +35,41 @@ final class MediaStore: ObservableObject {
         UserDefaults.standard.set(accessCode, forKey: "accessCode")
     }
 
+    func clearSearch() {
+        entries = []
+        selected = []
+        status = "Período alterado. Toque em Buscar fotos e vídeos novamente."
+    }
+
+    func testConnection() async {
+        guard let base = URL(string: serverURL), ["http", "https"].contains(base.scheme?.lowercased() ?? ""),
+              !accessCode.isEmpty else {
+            status = "Informe o endereço do computador e o código de acesso."
+            return
+        }
+        saveConnection()
+        isBusy = true
+        status = "Testando conexão com o computador…"
+        defer { isBusy = false }
+        do {
+            var request = URLRequest(url: base.appendingPathComponent("api/files"))
+            request.setValue(accessCode, forHTTPHeaderField: "x-media-token")
+            request.timeoutInterval = 15
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                status = "O computador respondeu de forma inesperada."
+                return
+            }
+            switch http.statusCode {
+            case 200: status = "Conectado ao computador. Pode enviar uma foto de teste."
+            case 401: status = "Código de acesso incorreto. Confira o atalho no PC."
+            default: status = "O computador respondeu com erro \(http.statusCode)."
+            }
+        } catch {
+            status = "Não conectou: \(error.localizedDescription). Confira Tailscale e endereço."
+        }
+    }
+
     func find(from start: Date, through end: Date) async {
         isBusy = true
         status = "Procurando fotos no período…"

@@ -16,6 +16,8 @@ struct ContentView: View {
                     Button("Buscar fotos e vídeos") { Task { await store.find(from: from, through: through) } }
                         .disabled(store.isBusy)
                 }
+                .onChange(of: from) { _, _ in store.clearSearch() }
+                .onChange(of: through) { _, _ in store.clearSearch() }
                 Section("Conexão com o computador") {
                     Picker("Local", selection: $internet) {
                         Text("Pela internet").tag(true)
@@ -29,6 +31,8 @@ struct ContentView: View {
                         .textInputAutocapitalization(.never).keyboardType(.URL)
                     SecureField("Código de acesso", text: $store.accessCode)
                         .keyboardType(.numberPad)
+                    Button("Testar conexão") { Task { await store.testConnection() } }
+                        .disabled(store.isBusy)
                     Text("Para usar pela internet, deixe o Tailscale ligado no iPhone e no computador.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Os arquivos serão guardados em uma pasta separada no disco D:.")
