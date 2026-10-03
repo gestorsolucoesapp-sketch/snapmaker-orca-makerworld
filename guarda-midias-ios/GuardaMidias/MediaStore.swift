@@ -81,9 +81,12 @@ final class MediaStore: ObservableObject {
     @Published var transferSecondsRemaining: TimeInterval? = nil
     @Published var transferFileIndex = 0
     @Published var transferFileCount = 0
+    @Published var transferCompletedCount = 0
+    @Published var totalSecondsRemaining: TimeInterval? = nil
     @Published var cableQueueCount = 0
     @Published var cableVerifiedIDs: Set<String> = []
     private var transferStartedAt = Date()
+    private var totalStartedAt = Date()
     private var cableMonitorRunning = false
     private var cableVerifiedHashes: [String: String] = [:]
 
@@ -212,6 +215,9 @@ final class MediaStore: ObservableObject {
         transferProgress = 0
         transferSpeed = 0
         transferSecondsRemaining = nil
+        totalSecondsRemaining = nil
+        transferCompletedCount = 0
+        totalStartedAt = Date()
         transferPhase = "Conferindo conexão…"
         guard let base = URL(string: serverURL), ["http", "https"].contains(base.scheme?.lowercased() ?? ""),
               !accessCode.isEmpty else {
@@ -243,6 +249,7 @@ final class MediaStore: ObservableObject {
                 if size < Int64(minimumMB) * 1_000_000 {
                     skipped += 1
                     transferPhase = "Ignorado: menor que \(minimumMB) MB"
+                    updateTotalEstimate(completed: index + 1, total: chosen.count)
                     continue
                 }
                 let localHash = try sha256(file)
@@ -291,6 +298,7 @@ final class MediaStore: ObservableObject {
                 transferPhase = "Falha em \(entry.name)"
                 status = "Falha em \(entry.name): \(error.localizedDescription)"
             }
+            updateTotalEstimate(completed: index + 1, total: chosen.count)
         }
         if !deleteAfterBackup {
             status = "\(success) guardado(s) e conferido(s) no PC. \(skipped) abaixo de \(minimumMB) MB. \(failed) falha(s). Nada foi apagado do iPhone."
@@ -357,6 +365,9 @@ final class MediaStore: ObservableObject {
         transferProgress = 0
         transferSpeed = 0
         transferSecondsRemaining = nil
+        totalSecondsRemaining = nil
+        transferCompletedCount = 0
+        totalStartedAt = Date()
         defer { isBusy = false }
         do { try FileManager.default.createDirectory(at: cableFolder, withIntermediateDirectories: true) }
         catch { status = "Não foi possível preparar a pasta para o cabo: \(error.localizedDescription)"; return }
@@ -371,7 +382,11 @@ final class MediaStore: ObservableObject {
                 let (source, temporary) = try await materialize(entry)
                 defer { if temporary { try? FileManager.default.removeItem(at: source) } }
                 let size = (try FileManager.default.attributesOfItem(atPath: source.path)[.size] as? NSNumber)?.int64Value ?? 0
-                if size < Int64(minimumMB) * 1_000_000 { skipped += 1; continue }
+                if size < Int64(minimumMB) * 1_000_000 {
+                    skipped += 1
+                    updateTotalEstimate(completed: index + 1, total: chosen.count)
+                    continue
+                }
                 let id = UUID().uuidString
                 let ext = source.pathExtension.isEmpty ? "bin" : source.pathExtension.lowercased()
                 let fileName = "\(id).\(ext)"
@@ -407,6 +422,7 @@ final class MediaStore: ObservableObject {
                 failed += 1
                 status = "Falha ao preparar \(entry.name): \(error.localizedDescription)"
             }
+            updateTotalEstimate(completed: index + 1, total: chosen.count)
         }
         cableQueueCount += prepared
         transferPhase = "Pronto para copiar pelo cabo"
@@ -538,6 +554,18 @@ final class MediaStore: ObservableObject {
         let elapsed = max(Date().timeIntervalSince(transferStartedAt), 0.1)
         transferSpeed = Double(sent) / elapsed
         transferSecondsRemaining = transferSpeed > 0 ? Double(expected - sent) / transferSpeed : nil
+    }
+
+    private func updateTotalEstimate(completed: Int, total: Int) {
+        transferCompletedCount = completed
+        guard completed >= 5, completed < total else {
+            totalSecondsRemaining = nil
+            return
+        }
+        // Include Photos/iCloud preparation, hashing, and transfer stalls in the
+        // observed average. This is an estimate, not a USB link-speed claim.
+        let elapsed = max(Date().timeIntervalSince(totalStartedAt), 1)
+        totalSecondsRemaining = elapsed / Double(completed) * Double(total - completed)
     }
 
     private func verifySavedCopy(_ receipt: UploadReceipt, at base: URL) async throws {

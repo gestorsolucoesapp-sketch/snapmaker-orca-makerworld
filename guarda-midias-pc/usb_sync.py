@@ -27,6 +27,7 @@ CONNECTION_CONFIG = "/Library/Application Support/GuardaMidiasConnection.json"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif",
                       ".mp4", ".mov", ".m4v", ".avi", ".dng", ".tif", ".tiff"}
 MAX_SIZE = 8 * 1024**3
+USB_READ_TIMEOUT = 20
 
 
 def hash_file(path: Path) -> str:
@@ -83,12 +84,15 @@ async def import_one(service: HouseArrestService, manifest: dict, backup_dir: Pa
     started = time.monotonic()
     last_report = 0.0
     try:
-        handle = await service.fopen(remote)
+        handle = await asyncio.wait_for(service.fopen(remote), timeout=USB_READ_TIMEOUT)
         try:
             actual_digest = hashlib.sha256()
             with partial.open("xb") as output:
                 while copied < size:
-                    chunk = await service.fread(handle, min(1024 * 1024, size - copied))
+                    chunk = await asyncio.wait_for(
+                        service.fread(handle, min(1024 * 1024, size - copied)),
+                        timeout=USB_READ_TIMEOUT,
+                    )
                     if not chunk:
                         raise IOError("USB transfer ended before the complete file arrived")
                     output.write(chunk)
@@ -104,7 +108,7 @@ async def import_one(service: HouseArrestService, manifest: dict, backup_dir: Pa
                 output.flush()
                 os.fsync(output.fileno())
         finally:
-            await service.fclose(handle)
+            await asyncio.wait_for(service.fclose(handle), timeout=USB_READ_TIMEOUT)
         if copied != size or actual_digest.hexdigest() != digest:
             raise IOError("USB copy failed checksum verification")
         target, duplicate = destination(folder, name, digest)
@@ -118,6 +122,9 @@ async def import_one(service: HouseArrestService, manifest: dict, backup_dir: Pa
             os.fsync(log.fileno())
         await service.set_file_contents(
             f"{QUEUE}/{identifier}.receipt.json", json.dumps(receipt).encode("utf-8"))
+        # The verified backup and receipt are sufficient; keeping a second full copy
+        # in the app container would fill the iPhone during a large export.
+        await service.rm_single(remote)
         return receipt
     finally:
         partial.unlink(missing_ok=True)
@@ -134,12 +141,38 @@ async def sync_once() -> int:
         if not await service.isdir(QUEUE):
             return 0
         names = await service.listdir(QUEUE)
+        name_set = set(names)
+        staged_by_id = {name[:36]: name for name in names
+                        if re.fullmatch(r"[0-9A-Fa-f-]{36}\.[A-Za-z0-9]+", name)
+                        and Path(name).suffix.lower() in ALLOWED_EXTENSIONS}
         imported = 0
         for name in names:
             if not re.fullmatch(r"[0-9A-Fa-f-]{36}\.json", name):
                 continue
             identifier = name[:-5]
-            if f"{identifier}.receipt.json" in names:
+            if f"{identifier}.receipt.json" in name_set:
+                if identifier not in staged_by_id:
+                    continue
+                # Recover space from exports completed before automatic cleanup
+                # was added. Never remove a staged file unless its local copy
+                # still matches both the manifest and the receipt.
+                manifest = json.loads(await service.get_file_contents(f"{QUEUE}/{name}"))
+                receipt = json.loads(await service.get_file_contents(
+                    f"{QUEUE}/{identifier}.receipt.json"))
+                _, _, size, digest = validate_manifest(manifest)
+                folder = receipt.get("folder", "")
+                saved_name = receipt.get("name", "")
+                if (re.fullmatch(r"\d{4}-\d{2}-\d{2}", folder)
+                        and isinstance(saved_name, str)
+                        and receipt.get("id") == identifier
+                        and receipt.get("size") == size
+                        and receipt.get("sha256") == digest):
+                    saved = BACKUP_DIR / folder / safe_name(saved_name)
+                    staged = f"{QUEUE}/{staged_by_id[identifier]}"
+                    if staged_by_id[identifier] == manifest["fileName"] \
+                            and saved.is_file() and saved.stat().st_size == size \
+                            and hash_file(saved) == digest:
+                        await service.rm_single(staged)
                 continue
             manifest = json.loads(await service.get_file_contents(f"{QUEUE}/{name}"))
             await import_one(service, manifest)

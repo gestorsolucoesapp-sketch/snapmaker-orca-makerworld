@@ -98,6 +98,20 @@ struct ContentView: View {
                             if store.transferFileCount > 0 {
                                 Text("Arquivo \(store.transferFileIndex) de \(store.transferFileCount)")
                                     .font(.caption).foregroundStyle(.secondary)
+                                ProgressView(value: Double(store.transferCompletedCount),
+                                             total: Double(store.transferFileCount))
+                                    .tint(.mint)
+                                Text("\(store.transferCompletedCount) de \(store.transferFileCount) preparados ou enviados")
+                                    .font(.caption).monospacedDigit()
+                                if let remaining = store.totalSecondsRemaining {
+                                    Text("Tempo estimado para \(useCable ? "preparar" : "enviar") o restante: \(estimatedTime(remaining))")
+                                        .font(.caption).monospacedDigit()
+                                    Text("Estimativa baseada no ritmo até agora; arquivos grandes e fotos no iCloud podem alterá-la.")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                } else if store.isBusy {
+                                    Text("Calculando tempo total após os primeiros arquivos…")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                             if store.transferPhase.hasPrefix("Enviando") || store.transferProgress > 0 {
                                 ProgressView(value: store.transferProgress)
@@ -212,5 +226,13 @@ struct ContentView: View {
         } message: {
             Text("Só serão apagadas as mídias cuja cópia no PC foi confirmada e cujo original ainda confere. Se Fotos do iCloud estiver ativo, a exclusão também será sincronizada com iCloud e outros aparelhos.")
         }
+    }
+
+    private func estimatedTime(_ seconds: TimeInterval) -> String {
+        let roundedMinutes = max(1, Int((seconds / 60).rounded()))
+        let hours = roundedMinutes / 60
+        let minutes = roundedMinutes % 60
+        if hours > 0 { return "cerca de \(hours) h \(minutes) min" }
+        return "cerca de \(minutes) min"
     }
 }

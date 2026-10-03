@@ -13,6 +13,7 @@ class FakePhone:
     def __init__(self, payload):
         self.payload = io.BytesIO(payload)
         self.written = {}
+        self.removed = []
 
     async def fopen(self, path):
         return 1
@@ -26,6 +27,9 @@ class FakePhone:
     async def set_file_contents(self, path, data):
         self.written[path] = json.loads(data)
 
+    async def rm_single(self, path):
+        self.removed.append(path)
+
 
 def test_cable_copy_only_acknowledges_matching_bytes(tmp_path):
     payload = b"original-photo-bytes"
@@ -36,6 +40,7 @@ def test_cable_copy_only_acknowledges_matching_bytes(tmp_path):
     receipt = asyncio.run(import_one(phone, manifest, tmp_path))
     assert (tmp_path / receipt["folder"] / "IMG_001.jpg").read_bytes() == payload
     assert phone.written[f"/Documents/CableQueue/{identifier}.receipt.json"]["sha256"] == manifest["sha256"]
+    assert phone.removed == [f"/Documents/CableQueue/{identifier}.jpg"]
     assert not list(tmp_path.rglob("*.partial"))
 
 
@@ -47,4 +52,5 @@ def test_cable_copy_rejects_wrong_checksum_without_receipt(tmp_path):
     with pytest.raises(IOError, match="checksum"):
         asyncio.run(import_one(phone, manifest, tmp_path))
     assert not any("receipt.json" in path for path in phone.written)
+    assert not phone.removed
     assert not list(tmp_path.rglob("*.partial"))
