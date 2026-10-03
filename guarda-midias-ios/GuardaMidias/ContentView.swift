@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var through = Date()
     @State private var internet = UserDefaults.standard.string(forKey: "serverURL") != "http://192.168.68.82:8765"
+    @State private var useCable = false
     @State private var confirmBackupAndDelete = false
 
     var body: some View {
@@ -58,13 +59,18 @@ struct ContentView: View {
                             .disabled(store.entries.isEmpty || store.isBusy)
                         Button("Limpar seleção") { store.selected = [] }
                             .disabled(store.selected.isEmpty || store.isBusy)
-                        Button { Task { await store.sendSelected() } } label: {
-                            Label("Guardar \(store.selected.count) no computador", systemImage: "arrow.up.doc.fill")
+                        Button { Task {
+                            if useCable { await store.prepareForCable() }
+                            else { await store.sendSelected() }
+                        } } label: {
+                            Label(useCable ? "Preparar \(store.selected.count) para cabo" : "Guardar \(store.selected.count) no computador",
+                                  systemImage: useCable ? "cable.connector" : "arrow.up.doc.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
-                        .disabled(store.isBusy || store.selected.isEmpty)
+                        .disabled(store.isBusy || store.selected.isEmpty || (useCable && store.cableQueueCount > 0))
+                        if !useCable {
                         Button {
                             confirmBackupAndDelete = true
                         } label: {
@@ -76,13 +82,46 @@ struct ContentView: View {
                         .disabled(store.isBusy || store.selected.isEmpty)
                         Text("Só apaga após conferir a cópia no computador. Se Fotos do iCloud estiver ativo, a exclusão também será sincronizada com iCloud e outros aparelhos. Live Photos e fotos editadas permanecem no iPhone. Mídias dentro do WhatsApp precisam ser apagadas no próprio WhatsApp.")
                             .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("O cabo guarda os originais sem apagar. Depois da cópia confirmada, você pode decidir o que remover no iPhone.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     } else {
                         Text("Escolha o período e toque em Buscar para ver o total.")
                             .foregroundStyle(.secondary)
                     }
                     Text(store.status).font(.caption)
+                    if store.hasTransferAttempt {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(store.transferPhase).font(.subheadline.weight(.semibold))
+                            if store.transferFileCount > 0 {
+                                Text("Arquivo \(store.transferFileIndex) de \(store.transferFileCount)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if store.transferPhase.hasPrefix("Enviando") || store.transferProgress > 0 {
+                                ProgressView(value: store.transferProgress)
+                                Text("\(Int(store.transferProgress * 100))% · \(ByteCountFormatter.string(fromByteCount: Int64(store.transferSpeed), countStyle: .file))/s" +
+                                     (store.transferSecondsRemaining.map { " · faltam cerca de \(Int($0.rounded())) s" } ?? ""))
+                                    .font(.caption).monospacedDigit()
+                            } else if store.isBusy {
+                                ProgressView()
+                            }
+                        }
+                    }
                 }
                 Section("Conexão com o computador") {
+                    Picker("Método", selection: $useCable) {
+                        Text("Internet / Wi-Fi").tag(false)
+                        Text("Cabo USB").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if useCable {
+                        Text("Conecte e desbloqueie o iPhone no PC. O Guarda Mídias no computador copiará os arquivos preparados para o disco D: e conferirá cada um.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("Conferir cópias do cabo") { store.checkCableReceipts() }
+                        Text("\(store.cableQueueCount) arquivo(s) aguardando cópia pelo cabo")
+                            .font(.caption)
+                    } else {
                     Picker("Local", selection: $internet) {
                         Text("Pela internet").tag(true)
                         Text("Em casa").tag(false)
@@ -101,6 +140,7 @@ struct ContentView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Os arquivos serão guardados em uma pasta separada no disco D:.")
                         .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Section("Arquivos") {
                     if !store.entries.isEmpty {
@@ -134,6 +174,7 @@ struct ContentView: View {
             }
             .navigationTitle("Guarda Mídias")
         }
+        .task { await store.monitorCableReceipts() }
         .confirmationDialog("Guardar e apagar do iPhone?", isPresented: $confirmBackupAndDelete, titleVisibility: .visible) {
             Button("Guardar e apagar as cópias conferidas", role: .destructive) {
                 Task { await store.sendSelected(deleteAfterBackup: true) }

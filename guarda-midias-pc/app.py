@@ -22,7 +22,7 @@ TOKEN_FILE = BACKUP_DIR / ".access-token"
 MAX_FILE_SIZE = 8 * 1024**3
 ALLOWED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif",
-    ".mp4", ".mov", ".m4v", ".avi",
+    ".mp4", ".mov", ".m4v", ".avi", ".dng", ".tif", ".tiff",
 }
 commit_lock = asyncio.Lock()
 
