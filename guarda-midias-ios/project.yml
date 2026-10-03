@@ -8,10 +8,9 @@ targets:
     deploymentTarget: '17.0'
     sources:
       - path: GuardaMidias
-    info:
-      path: GuardaMidias/Info.plist
     settings:
       base:
+        INFOPLIST_FILE: GuardaMidias/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.gestorsolucoesapp.guardamidias
         SWIFT_VERSION: 5.0
         TARGETED_DEVICE_FAMILY: '1'
