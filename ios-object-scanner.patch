@@ -24,7 +24,7 @@ index 5c3690f..8a14b06 100644
  	<true/>
  	<key>UILaunchScreen</key>
 diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
-index 4417b04..fcce6a5 100644
+index 4417b04..3e9393b 100644
 --- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 +++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
 @@ -16,6 +16,7 @@
@@ -64,7 +64,7 @@ index 4417b04..fcce6a5 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 21;
-+				CURRENT_PROJECT_VERSION = 22;
++				CURRENT_PROJECT_VERSION = 23;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
  				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
@@ -73,7 +73,7 @@ index 4417b04..fcce6a5 100644
  				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
  				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 -				MARKETING_VERSION = 2.0.5;
-+				MARKETING_VERSION = 2.0.6;
++				MARKETING_VERSION = 2.0.7;
  				OTHER_LDFLAGS = "$(inherited)";
  				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
  				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -82,7 +82,7 @@ index 4417b04..fcce6a5 100644
  				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  				CODE_SIGN_STYLE = Automatic;
 -				CURRENT_PROJECT_VERSION = 21;
-+				CURRENT_PROJECT_VERSION = 22;
++				CURRENT_PROJECT_VERSION = 23;
  				GENERATE_INFOPLIST_FILE = NO;
  				INFOPLIST_FILE = Resources/AppInfo.plist;
  				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
@@ -91,7 +91,7 @@ index 4417b04..fcce6a5 100644
  				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
  				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 -				MARKETING_VERSION = 2.0.5;
-+				MARKETING_VERSION = 2.0.6;
++				MARKETING_VERSION = 2.0.7;
  				OTHER_LDFLAGS = "$(inherited)";
  				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
  				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -145,10 +145,10 @@ index 383bfad..7556c9b 100644
                  NavigationLink {
 diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
 new file mode 100644
-index 0000000..c46f5df
+index 0000000..467e713
 --- /dev/null
 +++ b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,443 @@
 +import SwiftUI
 +import Combine
 +import RealityKit
@@ -185,6 +185,8 @@ index 0000000..c46f5df
 +    @State private var modelURL: URL?
 +    @State private var errorMessage: String?
 +    @State private var unavailable = false
++    @State private var lightGuidance = ScanGuidance.waitingForLight
++    @State private var captureGuidance = ScanGuidance.waitingForObject
 +    private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 +
 +    var body: some View {
@@ -201,6 +203,10 @@ index 0000000..c46f5df
 +                                .padding(10).background(.ultraThinMaterial, in: Capsule())
 +                                .padding(12)
 +                        }
++                    HStack(spacing: 10) {
++                        guidanceBadge("Luz", guidance: lightGuidance)
++                        guidanceBadge("Captura", guidance: captureGuidance)
++                    }
 +                    Text(pass.instruction).font(.headline).multilineTextAlignment(.center)
 +                    Text("Use luz difusa e um objeto rígido e fosco. Mantenha-o inteiro no enquadramento.")
 +                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -257,6 +263,26 @@ index 0000000..c46f5df
 +                Text("Apoie o objeto em outra face, mantendo a mesma iluminação. Depois enquadre-o novamente.")
 +            }
 +        }
++    }
++
++    private func guidanceBadge(_ title: String, guidance: ScanGuidance) -> some View {
++        HStack(alignment: .top, spacing: 8) {
++            Circle()
++                .fill(guidance.color)
++                .frame(width: 12, height: 12)
++                .padding(.top, 3)
++            VStack(alignment: .leading, spacing: 3) {
++                Text(title).font(.caption.bold())
++                Text(guidance.message).font(.caption2)
++                    .fixedSize(horizontal: false, vertical: true)
++            }
++            Spacer(minLength: 0)
++        }
++        .padding(10)
++        .frame(maxWidth: .infinity, alignment: .leading)
++        .background(guidance.color.opacity(0.13), in: RoundedRectangle(cornerRadius: 12))
++        .accessibilityElement(children: .combine)
++        .accessibilityLabel("\(title): \(guidance.message)")
 +    }
 +
 +    @ViewBuilder private func captureControls(_ session: ObjectCaptureSession) -> some View {
@@ -328,12 +354,52 @@ index 0000000..c46f5df
 +        guard let capture else { return }
 +        shotCount = capture.numberOfShotsTaken
 +        passComplete = capture.userCompletedScanPass
++        updateGuidance(for: capture)
 +        switch capture.state {
 +        case .completed:
 +            if !reconstructionAttempted { reconstruct() }
 +        case .failed(let error):
 +            errorMessage = "Falha na captura: \(error.localizedDescription)"
 +        default: break
++        }
++    }
++
++    private func updateGuidance(for session: ObjectCaptureSession) {
++        let feedback = session.feedback
++        if feedback.contains(.environmentTooDark) {
++            lightGuidance = .problem("Muito escuro. Acenda uma luz difusa.")
++        } else if feedback.contains(.environmentLowLight) {
++            lightGuidance = .problem("Pouca luz. Ilumine mais o objeto.")
++        } else if case .ready = session.state {
++            lightGuidance = .waitingForLight
++        } else {
++            lightGuidance = .good("Iluminação suficiente")
++        }
++
++        if session.isPaused {
++            captureGuidance = .problem("Captura pausada")
++        } else if feedback.contains(.environmentTooDark) || feedback.contains(.environmentLowLight) {
++            captureGuidance = .problem("Melhore a luz antes de continuar")
++        } else if feedback.contains(.movingTooFast) {
++            captureGuidance = .problem("Mova o iPhone mais devagar")
++        } else if feedback.contains(.objectTooClose) {
++            captureGuidance = .problem("Afaste um pouco o iPhone")
++        } else if feedback.contains(.objectTooFar) {
++            captureGuidance = .problem("Aproxime o iPhone")
++        } else if feedback.contains(.outOfFieldOfView) {
++            captureGuidance = .problem("Mantenha o objeto no quadro")
++        } else if feedback.contains(.objectNotDetected) {
++            captureGuidance = .problem("Centralize o objeto para detectar")
++        } else if feedback.contains(.objectNotFlippable) && pass == .underside {
++            captureGuidance = .problem("Difícil unir a parte de baixo")
++        } else if feedback.contains(.overCapturing) {
++            captureGuidance = .problem("Limite de fotos atingido")
++        } else if session.cameraTracking != .normal {
++            captureGuidance = .problem("Rastreamento instável. Mova devagar.")
++        } else if case .capturing = session.state {
++            captureGuidance = .good("Boa leitura. Continue a volta.")
++        } else {
++            captureGuidance = .waitingForObject
 +        }
 +    }
 +
@@ -392,6 +458,22 @@ index 0000000..c46f5df
 +    private func close() {
 +        if !reconstructing && modelURL == nil { capture?.cancel() }
 +        onClose()
++    }
++}
++
++private struct ScanGuidance {
++    let message: String
++    let color: Color
++
++    static let waitingForLight = ScanGuidance(message: "Avaliando iluminação…", color: .gray)
++    static let waitingForObject = ScanGuidance(message: "Aguardando o objeto…", color: .gray)
++
++    static func good(_ message: String) -> ScanGuidance {
++        ScanGuidance(message: message, color: .green)
++    }
++
++    static func problem(_ message: String) -> ScanGuidance {
++        ScanGuidance(message: message, color: .red)
 +    }
 +}
 +
