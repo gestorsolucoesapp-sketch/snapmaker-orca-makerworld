@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var internet = UserDefaults.standard.string(forKey: "serverURL") != "http://192.168.68.82:8765"
     @State private var useCable = false
     @State private var confirmBackupAndDelete = false
+    @State private var confirmCableDelete = false
 
     var body: some View {
         NavigationStack {
@@ -83,7 +84,7 @@ struct ContentView: View {
                         Text("Só apaga após conferir a cópia no computador. Se Fotos do iCloud estiver ativo, a exclusão também será sincronizada com iCloud e outros aparelhos. Live Photos e fotos editadas permanecem no iPhone. Mídias dentro do WhatsApp precisam ser apagadas no próprio WhatsApp.")
                             .font(.caption).foregroundStyle(.secondary)
                         } else {
-                            Text("O cabo guarda os originais sem apagar. Depois da cópia confirmada, você pode decidir o que remover no iPhone.")
+                            Text("O cabo guarda os originais sem apagar. Depois da cópia confirmada, selecione as mídias marcadas com ✓ para decidir o que remover.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     } else {
@@ -121,6 +122,15 @@ struct ContentView: View {
                         Button("Conferir cópias do cabo") { store.checkCableReceipts() }
                         Text("\(store.cableQueueCount) arquivo(s) aguardando cópia pelo cabo")
                             .font(.caption)
+                        let ready = store.selected.intersection(store.cableVerifiedIDs).count
+                        if ready > 0 {
+                            Button("Apagar \(ready) já conferida(s) pelo cabo", role: .destructive) {
+                                confirmCableDelete = true
+                            }
+                            .disabled(store.isBusy)
+                            Text("O app confere novamente o original antes de apagá-lo. Fotos do iCloud também sincroniza a exclusão com outros aparelhos.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     } else {
                     Picker("Local", selection: $internet) {
                         Text("Pela internet").tag(true)
@@ -193,6 +203,14 @@ struct ContentView: View {
             Button("Cancelar", role: .cancel) { }
         } message: {
             Text("O app conferirá cada cópia no computador antes de apagar o original. ATENÇÃO: se Fotos do iCloud estiver ativo, as exclusões também atingirão iCloud e outros aparelhos sincronizados. Mídias sem cópia confirmada serão mantidas.")
+        }
+        .alert("Apagar mídias conferidas pelo cabo?", isPresented: $confirmCableDelete) {
+            Button("Apagar do iPhone", role: .destructive) {
+                Task { await store.deleteCableConfirmedSelected() }
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("Só serão apagadas as mídias cuja cópia no PC foi confirmada e cujo original ainda confere. Se Fotos do iCloud estiver ativo, a exclusão também será sincronizada com iCloud e outros aparelhos.")
         }
     }
 }

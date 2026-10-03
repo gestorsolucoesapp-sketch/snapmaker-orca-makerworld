@@ -82,8 +82,10 @@ final class MediaStore: ObservableObject {
     @Published var transferFileIndex = 0
     @Published var transferFileCount = 0
     @Published var cableQueueCount = 0
+    @Published var cableVerifiedIDs: Set<String> = []
     private var transferStartedAt = Date()
     private var cableMonitorRunning = false
+    private var cableVerifiedHashes: [String: String] = [:]
 
     private var cableFolder: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -253,7 +255,9 @@ final class MediaStore: ObservableObject {
                 transferStartedAt = Date()
                 transferPhase = "Enviando: \(entry.name)"
                 let delegate = UploadProgressDelegate { [weak self] sent, expected in
-                    Task { @MainActor [weak self] in self?.updateUploadProgress(sent: sent, expected: expected) }
+                    Task { @MainActor [weak self] in
+                        self?.updateUploadProgress(sent: sent, expected: expected > 0 ? expected : size)
+                    }
                 }
                 let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file, delegate: delegate)
                 transferProgress = 1
@@ -437,6 +441,8 @@ final class MediaStore: ObservableObject {
                receipt.id == manifest.id, receipt.size == manifest.size,
                receipt.sha256 == manifest.sha256 {
                 backedUp.insert(manifest.assetID)
+                cableVerifiedIDs.insert(manifest.assetID)
+                cableVerifiedHashes[manifest.assetID] = manifest.sha256
                 try? FileManager.default.removeItem(at: cableFolder.appendingPathComponent(manifest.fileName))
                 confirmed += 1
             } else {
@@ -458,6 +464,72 @@ final class MediaStore: ObservableObject {
             transferProgress = 1
             status = "\(confirmed) arquivo(s) conferido(s) no disco D:. Os originais continuam no iPhone."
         }
+    }
+
+    func deleteCableConfirmedSelected() async {
+        checkCableReceipts()
+        let chosen = entries.filter { selected.contains($0.id) && cableVerifiedIDs.contains($0.id) }
+        guard !chosen.isEmpty else { status = "Selecione mídias já conferidas pelo cabo."; return }
+        isBusy = true
+        transferFileCount = chosen.count
+        defer { isBusy = false }
+        var safeToDelete: [MediaEntry] = []
+        var retained = 0
+        for (index, entry) in chosen.enumerated() {
+            transferFileIndex = index + 1
+            transferPhase = "Reverificando original: \(entry.name)"
+            do {
+                guard let expectedHash = cableVerifiedHashes[entry.id] else { retained += 1; continue }
+                let (file, temporary) = try await materialize(entry)
+                defer { if temporary { try? FileManager.default.removeItem(at: file) } }
+                guard try sha256(file) == expectedHash else { retained += 1; continue }
+                if case .photo(let asset) = entry.source {
+                    let resources = PHAssetResource.assetResources(for: asset)
+                    guard resources.count == 1 && !asset.mediaSubtypes.contains(.photoLive) else {
+                        retained += 1
+                        continue
+                    }
+                }
+                safeToDelete.append(entry)
+            } catch { retained += 1 }
+        }
+        let photos = safeToDelete.compactMap { entry -> PHAsset? in
+            if case .photo(let asset) = entry.source { return asset }
+            return nil
+        }
+        var removedIDs: Set<String> = []
+        if !photos.isEmpty {
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.deleteAssets(photos as NSArray)
+                }
+                removedIDs.formUnion(photos.map(\.localIdentifier))
+            } catch { retained += photos.count }
+        }
+        for entry in safeToDelete {
+            if case .file(let url) = entry.source {
+                do {
+                    try FileManager.default.removeItem(at: url)
+                    removedIDs.insert(entry.id)
+                } catch { retained += 1 }
+            }
+        }
+        entries.removeAll { removedIDs.contains($0.id) }
+        selected.subtract(removedIDs)
+        photoCount = entries.reduce(0) { count, entry in
+            if case .photo(let asset) = entry.source, asset.mediaType == .image { return count + 1 }
+            return count
+        }
+        videoCount = entries.reduce(0) { count, entry in
+            if case .photo(let asset) = entry.source, asset.mediaType == .video { return count + 1 }
+            return count
+        }
+        importedFileCount = entries.reduce(0) { count, entry in
+            if case .file = entry.source { return count + 1 }
+            return count
+        }
+        transferPhase = "Limpeza pelo cabo concluída"
+        status = "\(removedIDs.count) mídia(s) apagada(s) após conferência pelo cabo. \(retained) preservada(s) por segurança."
     }
 
     private func updateUploadProgress(sent: Int64, expected: Int64) {
