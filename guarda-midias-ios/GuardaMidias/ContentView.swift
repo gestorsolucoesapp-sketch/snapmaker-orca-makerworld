@@ -61,8 +61,13 @@ struct ContentView: View {
                         Button("Limpar seleção") { store.selected = [] }
                             .disabled(store.selected.isEmpty || store.isBusy)
                         Button { Task {
-                            if useCable { await store.prepareForCable() }
-                            else { await store.sendSelected() }
+                            if useCable {
+                                await store.prepareForCable()
+                                if store.switchToInternetRequested {
+                                    useCable = false
+                                    await store.sendSelected(skippingQueued: true)
+                                }
+                            } else { await store.sendSelected() }
                         } } label: {
                             Label(useCable ? "Preparar \(store.selected.count) para cabo" : "Guardar \(store.selected.count) no computador",
                                   systemImage: useCable ? "cable.connector" : "arrow.up.doc.fill")
@@ -92,6 +97,26 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                     Text(store.status).font(.caption)
+                    if store.isBusy && store.hasTransferAttempt {
+                        HStack {
+                            Button(store.pauseRequested ? "Continuar" : "Pausar") {
+                                store.togglePause()
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Parar") { store.requestStop() }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                        }
+                        if useCable {
+                            Button("Mudar para rede após este arquivo") {
+                                store.requestSwitchToInternet()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(store.switchToInternetRequested)
+                        }
+                        Text("Pausar, parar e mudar de método aguardam o arquivo atual terminar. Cópias já confirmadas permanecem no PC.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                     if store.hasTransferAttempt {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(store.transferPhase).font(.subheadline.weight(.semibold))

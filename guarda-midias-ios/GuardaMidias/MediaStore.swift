@@ -85,6 +85,9 @@ final class MediaStore: ObservableObject {
     @Published var totalSecondsRemaining: TimeInterval? = nil
     @Published var cableQueueCount = 0
     @Published var cableVerifiedIDs: Set<String> = []
+    @Published var pauseRequested = false
+    @Published var stopRequested = false
+    @Published var switchToInternetRequested = false
     private var transferStartedAt = Date()
     private var totalStartedAt = Date()
     private var cableMonitorRunning = false
@@ -93,6 +96,46 @@ final class MediaStore: ObservableObject {
     private var cableFolder: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CableQueue", isDirectory: true)
+    }
+
+    func togglePause() {
+        pauseRequested.toggle()
+        status = pauseRequested ? "Pausando após o arquivo atual…" : "Continuando transferência…"
+    }
+
+    func requestStop() {
+        stopRequested = true
+        pauseRequested = false
+        status = "Parando após o arquivo atual. Os arquivos já copiados serão mantidos."
+    }
+
+    func requestSwitchToInternet() {
+        switchToInternetRequested = true
+        pauseRequested = false
+        status = "Mudando para rede após o arquivo atual…"
+    }
+
+    private func continueAtFileBoundary() async -> Bool {
+        while pauseRequested && !stopRequested && !switchToInternetRequested {
+            transferPhase = "Pausado após o arquivo anterior"
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        return !stopRequested && !switchToInternetRequested
+    }
+
+    private func queuedCableAssetIDs() -> Set<String> {
+        let files = (try? FileManager.default.contentsOfDirectory(at: cableFolder,
+            includingPropertiesForKeys: nil)) ?? []
+        var ids: Set<String> = []
+        for file in files where file.pathExtension == "json"
+                && !file.lastPathComponent.hasSuffix(".receipt.json")
+                && !file.lastPathComponent.hasSuffix(".progress.json") {
+            if let data = try? Data(contentsOf: file),
+               let manifest = try? JSONDecoder().decode(CableManifest.self, from: data) {
+                ids.insert(manifest.assetID)
+            }
+        }
+        return ids
     }
 
     func saveConnection() {
@@ -209,7 +252,10 @@ final class MediaStore: ObservableObject {
         status = "Busca concluída. Selecione as mídias desejadas antes de guardar."
     }
 
-    func sendSelected(deleteAfterBackup: Bool = false) async {
+    func sendSelected(deleteAfterBackup: Bool = false, skippingQueued: Bool = false) async {
+        pauseRequested = false
+        stopRequested = false
+        switchToInternetRequested = false
         loadConnectionFromCable()
         hasTransferAttempt = true
         transferProgress = 0
@@ -228,7 +274,11 @@ final class MediaStore: ObservableObject {
         saveConnection()
         isBusy = true
         defer { isBusy = false }
-        let chosen = entries.filter { selected.contains($0.id) }
+        let alreadyQueued: Set<String> = skippingQueued ? queuedCableAssetIDs() : []
+        let chosen = entries.filter {
+            selected.contains($0.id) && (deleteAfterBackup || !backedUp.contains($0.id))
+                && !alreadyQueued.contains($0.id)
+        }
         transferFileCount = chosen.count
         var success = 0
         var skipped = 0
@@ -236,6 +286,7 @@ final class MediaStore: ObservableObject {
         var retainedComplex = 0
         var verifiedForRemoval: [MediaEntry] = []
         for (index, entry) in chosen.enumerated() {
+            guard await continueAtFileBoundary() else { break }
             transferFileIndex = index + 1
             transferProgress = 0
             transferSpeed = 0
@@ -300,6 +351,11 @@ final class MediaStore: ObservableObject {
             }
             updateTotalEstimate(completed: index + 1, total: chosen.count)
         }
+        if stopRequested {
+            transferPhase = "Parado"
+            status = "Envio parado. \(success) arquivo(s) conferido(s) no PC; os originais continuam no iPhone."
+            return
+        }
         if !deleteAfterBackup {
             status = "\(success) guardado(s) e conferido(s) no PC. \(skipped) abaixo de \(minimumMB) MB. \(failed) falha(s). Nada foi apagado do iPhone."
             transferPhase = failed == 0 ? "Envio concluído" : "Envio concluído com falhas"
@@ -357,8 +413,17 @@ final class MediaStore: ObservableObject {
     }
 
     func prepareForCable() async {
-        let chosen = entries.filter { selected.contains($0.id) }
-        guard !chosen.isEmpty else { status = "Selecione ao menos uma mídia."; return }
+        pauseRequested = false
+        stopRequested = false
+        switchToInternetRequested = false
+        let alreadyQueued = queuedCableAssetIDs()
+        let chosen = entries.filter {
+            selected.contains($0.id) && !backedUp.contains($0.id) && !alreadyQueued.contains($0.id)
+        }
+        guard !chosen.isEmpty else {
+            status = "Todas as mídias selecionadas já estão na fila do cabo ou conferidas no PC."
+            return
+        }
         isBusy = true
         hasTransferAttempt = true
         transferFileCount = chosen.count
@@ -375,6 +440,7 @@ final class MediaStore: ObservableObject {
         var skipped = 0
         var failed = 0
         for (index, entry) in chosen.enumerated() {
+            guard await continueAtFileBoundary() else { break }
             transferFileIndex = index + 1
             transferPhase = "Obtendo original: \(entry.name)"
             transferProgress = 0
@@ -406,6 +472,7 @@ final class MediaStore: ObservableObject {
                         hash.update(data: data)
                         copied += Int64(data.count)
                         updateUploadProgress(sent: copied, expected: size)
+                        await Task.yield()
                     }
                     try output.synchronize()
                     let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
@@ -425,8 +492,9 @@ final class MediaStore: ObservableObject {
             updateTotalEstimate(completed: index + 1, total: chosen.count)
         }
         cableQueueCount += prepared
-        transferPhase = "Pronto para copiar pelo cabo"
-        status = "\(prepared) arquivo(s) preparado(s). Deixe o iPhone conectado ao PC para a cópia pelo cabo. \(skipped) abaixo do mínimo; \(failed) falha(s). Nada foi apagado."
+        transferPhase = switchToInternetRequested ? "Mudando para rede" :
+            (stopRequested ? "Preparação parada" : "Pronto para copiar pelo cabo")
+        status = "\(prepared) arquivo(s) preparado(s) para cabo; o PC continuará a copiá-los. \(skipped) abaixo do mínimo; \(failed) falha(s). Nada foi apagado."
         Task { await monitorCableReceipts() }
     }
 
