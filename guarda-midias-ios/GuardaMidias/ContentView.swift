@@ -18,15 +18,28 @@ struct ContentView: View {
                     }
                     DatePicker("De", selection: $from, displayedComponents: .date).disabled(store.isBusy)
                     DatePicker("Até", selection: $through, in: from..., displayedComponents: .date).disabled(store.isBusy)
-                    Button("Buscar fotos e vídeos") { Task { await store.find(from: from, through: through) } }
-                        .disabled(store.isBusy)
+                    Button { Task { await store.find(from: from, through: through) } } label: {
+                        Label("Buscar fotos e vídeos", systemImage: "magnifyingglass")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.mint)
+                    .disabled(store.isBusy)
                 }
                 .onChange(of: from) { _, _ in store.clearSearch() }
                 .onChange(of: through) { _, _ in store.clearSearch() }
                 Section("Encontradas no período") {
                     if store.hasSearched {
-                        Text("\(store.entries.count) mídias encontradas")
-                            .font(.title2.bold())
+                        HStack(spacing: 12) {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.title).foregroundStyle(.mint)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(store.entries.count)")
+                                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                                Text("mídias encontradas no período")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                        }
                         Text("\(store.photoCount) fotos · \(store.videoCount) vídeos · \(store.importedFileCount) arquivos importados")
                         Text("\(store.selected.count) selecionadas para guardar")
                             .foregroundStyle(.secondary)
@@ -44,8 +57,13 @@ struct ContentView: View {
                             .disabled(store.entries.isEmpty || store.isBusy)
                         Button("Limpar seleção") { store.selected = [] }
                             .disabled(store.selected.isEmpty || store.isBusy)
-                        Button("Guardar \(store.selected.count) selecionadas no computador") { Task { await store.sendSelected() } }
-                            .disabled(store.isBusy || store.selected.isEmpty)
+                        Button { Task { await store.sendSelected() } } label: {
+                            Label("Guardar \(store.selected.count) no computador", systemImage: "arrow.up.doc.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(store.isBusy || store.selected.isEmpty)
                     } else {
                         Text("Escolha o período e toque em Buscar para ver o total.")
                             .foregroundStyle(.secondary)
