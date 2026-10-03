@@ -74,7 +74,7 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                         .tint(.red)
                         .disabled(store.isBusy || store.selected.isEmpty)
-                        Text("Só apaga após conferir a cópia no computador. Live Photos e fotos editadas permanecem no iPhone. Mídias dentro do WhatsApp precisam ser apagadas no próprio WhatsApp.")
+                        Text("Só apaga após conferir a cópia no computador. Se Fotos do iCloud estiver ativo, a exclusão também será sincronizada com iCloud e outros aparelhos. Live Photos e fotos editadas permanecem no iPhone. Mídias dentro do WhatsApp precisam ser apagadas no próprio WhatsApp.")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Escolha o período e toque em Buscar para ver o total.")
@@ -140,7 +140,7 @@ struct ContentView: View {
             }
             Button("Cancelar", role: .cancel) { }
         } message: {
-            Text("O app enviará as mídias selecionadas, conferirá cada cópia no computador e só então pedirá ao iPhone para apagar os originais. Mídias sem cópia confirmada serão mantidas.")
+            Text("O app conferirá cada cópia no computador antes de apagar o original. ATENÇÃO: se Fotos do iCloud estiver ativo, as exclusões também atingirão iCloud e outros aparelhos sincronizados. Mídias sem cópia confirmada serão mantidas.")
         }
     }
 }
