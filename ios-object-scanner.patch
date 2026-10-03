@@ -1,0 +1,476 @@
+diff --git a/README.md b/README.md
+index c170976..76ab38c 100644
+--- a/README.md
++++ b/README.md
+@@ -44,6 +44,7 @@ The bundle is written to `ios/Resources/KiriEngine/kiri-snapslice.js`. Review ch
+ - Built for iPhone and the Snapmaker U1. Printer functions need the U1 to be reachable, normally on the same Wi-Fi network; the app has no internet relay or background push service.
+ - The on-device slicer can run slowly or run out of memory on very large/complex models. Progress and errors appear in the app, but progress is not a reliable time estimate.
+ - STL and supported 3MF geometry, parts, and painted colors are imported. Creator-specific print profiles, modifiers, and some 3MF variants do not transfer. Confirm settings and tool mapping before printing.
++- On compatible LiDAR iPhones, **Escanear objeto em 3D** guides a middle, upper, and flipped underside photo pass using RealityKit Object Capture. Reconstruction runs on the iPhone and produces a millimeter STL for the Prepare view. It uses the on-device reduced-detail mode; the STL has no color or texture. Check scale, base, and mesh defects before slicing. Capture does not guarantee a watertight printable model. Source photos and the USDZ remain under Files > SnapSlice > Scans.
+ - Four-color printing requires matching the chosen T1–T4 assignments with the filament actually loaded. Material combinations and support interfaces are not automatically validated.
+ - The camera shows refreshed still images. Repository shortcuts open the providers' websites; there is no combined model search or profile converter yet.
+ 
+diff --git a/ios/Resources/AppInfo.plist b/ios/Resources/AppInfo.plist
+index 5c3690f..8a14b06 100644
+--- a/ios/Resources/AppInfo.plist
++++ b/ios/Resources/AppInfo.plist
+@@ -69,6 +69,8 @@
+ 	</dict>
+ 	<key>NSLocalNetworkUsageDescription</key>
+ 	<string>SnapSlice connects directly to your Snapmaker U1 on the local network.</string>
++	<key>NSCameraUsageDescription</key>
++	<string>SnapSlice usa a câmera e o LiDAR para fotografar um objeto e criar um modelo 3D no iPhone.</string>
+ 	<key>UIFileSharingEnabled</key>
+ 	<true/>
+ 	<key>UILaunchScreen</key>
+diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+index 4417b04..d2a3cd7 100644
+--- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
++++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+@@ -16,6 +16,7 @@
+ 		A115A115A115A115A115A115 /* KiriGCodePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B116B116B116B116B116B116 /* KiriGCodePreview.swift */; };
+ 		A116A116A116A116A116A116 /* KiriEngine in Resources */ = {isa = PBXBuildFile; fileRef = B117B117B117B117B117B117 /* KiriEngine */; };
+ 		AA20AA20AA20AA20AA20AA20 /* MakerWorldBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20BB20BB20BB20BB20BB20; };
++		AA21AA21AA21AA21AA21AA21 /* ObjectScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB21BB21BB21BB21BB21BB21 /* ObjectScannerView.swift */; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXFileReference section */
+@@ -29,6 +30,7 @@
+ 		B116B116B116B116B116B116 /* KiriGCodePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiriGCodePreview.swift; sourceTree = "<group>"; };
+ 		B117B117B117B117B117B117 /* KiriEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; path = KiriEngine; sourceTree = "<group>"; };
+ 		BB20BB20BB20BB20BB20BB20 /* MakerWorldBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakerWorldBrowser.swift; sourceTree = "<group>"; };
++		BB21BB21BB21BB21BB21BB21 /* ObjectScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectScannerView.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -57,6 +59,7 @@
+ 				B101B101B101B101B101B101 /* SnapSliceNativeHarnessApp.swift */,
+ 				B102B102B102B102B102B102 /* ContentView.swift */,
+ 				BB20BB20BB20BB20BB20BB20 /* MakerWorldBrowser.swift */,
++				BB21BB21BB21BB21BB21BB21 /* ObjectScannerView.swift */,
+ 				B115B115B115B115B115B115 /* KiriSliceEngine.swift */,
+ 				B116B116B116B116B116B116 /* KiriGCodePreview.swift */,
+ 			);
+@@ -157,6 +160,7 @@
+ 				A101A101A101A101A101A101 /* SnapSliceNativeHarnessApp.swift in Sources */,
+ 				A102A102A102A102A102A102 /* ContentView.swift in Sources */,
+ 				AA20AA20AA20AA20AA20AA20 /* MakerWorldBrowser.swift in Sources */,
++				AA21AA21AA21AA21AA21AA21 /* ObjectScannerView.swift in Sources */,
+ 				A114A114A114A114A114A114 /* KiriSliceEngine.swift in Sources */,
+ 				A115A115A115A115A115A115 /* KiriGCodePreview.swift in Sources */,
+ 			);
+diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
+index 383bfad..7556c9b 100644
+--- a/ios/SnapSliceNativeHarness/ContentView.swift
++++ b/ios/SnapSliceNativeHarness/ContentView.swift
+@@ -1028,6 +1028,7 @@ struct ContentView: View {
+     @AppStorage("SnapSliceOnboardingComplete") private var onboardingComplete = false
+     @State private var selectedTab = 0
+     @State private var showingImporter = false
++    @State private var showingObjectScanner = false
+     @State private var showingGCodePreview = false
+     @State private var showingAbout = false
+     @State private var selectedTool = 1
+@@ -1112,6 +1113,13 @@ struct ContentView: View {
+                 SnapSliceOnboarding { onboardingComplete = true }
+             }
+         .sheet(isPresented: $showingAbout) { NavigationStack { SnapSliceAboutView() } }
++        .fullScreenCover(isPresented: $showingObjectScanner) {
++            ObjectScannerView(onImport: { url in
++                model.importModel(.success([url]))
++                selectedTab = 2
++                showingObjectScanner = false
++            }, onClose: { showingObjectScanner = false })
++        }
+         .sheet(isPresented: $showingGCodePreview) {
+             if let preview = model.gcodePreview {
+                 NavigationStack { KiriGCodePreviewView(preview: preview, filaments: model.printerFilaments) }
+@@ -1228,6 +1236,10 @@ struct ContentView: View {
+                 Label(model.hasModel ? "Continue Preparing" : "Import a Model", systemImage: "plus.circle.fill")
+                     .frame(maxWidth: .infinity).frame(height: 46)
+             }.buttonStyle(.borderedProminent)
++            Button { showingObjectScanner = true } label: {
++                Label("Escanear objeto em 3D", systemImage: "camera.viewfinder")
++                    .frame(maxWidth: .infinity)
++            }.buttonStyle(.bordered)
+             Button("Explore model repositories") { selectedTab = 1 }
+                 .font(.subheadline.weight(.medium))
+         }.snapCard()
+@@ -1244,6 +1256,10 @@ struct ContentView: View {
+                         Label("Import from Files", systemImage: "folder.fill")
+                             .frame(maxWidth: .infinity)
+                     }.buttonStyle(.borderedProminent)
++                    Button { showingObjectScanner = true } label: {
++                        Label("Escanear com o iPhone", systemImage: "camera.viewfinder")
++                            .frame(maxWidth: .infinity)
++                    }.buttonStyle(.bordered)
+                 }.snapCard()
+                 Text("Explore repositories").font(.headline).padding(.horizontal, 4)
+                 NavigationLink {
+diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
+new file mode 100644
+index 0000000..c46f5df
+--- /dev/null
++++ b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
+@@ -0,0 +1,361 @@
++import SwiftUI
++import Combine
++import RealityKit
++import SceneKit
++import simd
++
++/// Guided, entirely on-device object capture. The STL is intentionally treated as
++/// a draft until the user checks its dimensions and mesh in Prepare.
++@MainActor struct ObjectScannerView: View {
++    let onImport: (URL) -> Void
++    let onClose: () -> Void
++
++    private enum Pass: Int {
++        case around, above, underside
++
++        var instruction: String {
++            switch self {
++            case .around: return "Dê uma volta completa ao redor do objeto, na altura do meio."
++            case .above: return "Faça outra volta apontando a câmera de cima para baixo."
++            case .underside: return "Com o objeto virado, fotografe a parte de baixo em uma volta completa."
++            }
++        }
++    }
++
++    @State private var capture: ObjectCaptureSession?
++    @State private var pass: Pass = .around
++    @State private var scanFolder: URL?
++    @State private var shotCount = 0
++    @State private var passComplete = false
++    @State private var needsFlip = false
++    @State private var reconstructing = false
++    @State private var reconstructionAttempted = false
++    @State private var reconstructionProgress = 0.0
++    @State private var modelURL: URL?
++    @State private var errorMessage: String?
++    @State private var unavailable = false
++    private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
++
++    var body: some View {
++        NavigationStack {
++            VStack(spacing: 14) {
++                if unavailable {
++                    ContentUnavailableView("Captura indisponível", systemImage: "camera.metering.unknown",
++                        description: Text("Este aparelho não oferece a captura e reconstrução 3D necessárias. Use um iPhone Pro compatível com LiDAR."))
++                } else if let capture, modelURL == nil, !reconstructing {
++                    ObjectCaptureView(session: capture)
++                        .clipShape(RoundedRectangle(cornerRadius: 18))
++                        .overlay(alignment: .topLeading) {
++                            Label("\(shotCount) fotos", systemImage: "camera.fill")
++                                .padding(10).background(.ultraThinMaterial, in: Capsule())
++                                .padding(12)
++                        }
++                    Text(pass.instruction).font(.headline).multilineTextAlignment(.center)
++                    Text("Use luz difusa e um objeto rígido e fosco. Mantenha-o inteiro no enquadramento.")
++                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
++                    captureControls(capture)
++                } else if reconstructing {
++                    Spacer()
++                    ProgressView(value: reconstructionProgress) {
++                        Text("Criando o modelo 3D no iPhone…")
++                    } currentValueLabel: {
++                        Text("\(Int(reconstructionProgress * 100))%")
++                    }
++                    .padding()
++                    Text("Deixe o app aberto. As fotos não são enviadas para a nuvem.")
++                        .font(.footnote).foregroundStyle(.secondary)
++                    Spacer()
++                } else if let modelURL {
++                    Spacer()
++                    Image(systemName: "cube.transparent.fill").font(.system(size: 76)).foregroundStyle(.green)
++                    Text("Modelo pronto para conferir").font(.title2.bold())
++                    Text("O STL foi gerado em milímetros. Confira tamanho, base e possíveis buracos na prévia antes de fatiar. A captura não garante uma malha fechada.")
++                        .multilineTextAlignment(.center).foregroundStyle(.secondary)
++                    Button("Abrir no Prepare") { onImport(modelURL) }
++                        .buttonStyle(.borderedProminent)
++                    ShareLink(item: modelURL) { Label("Compartilhar STL", systemImage: "square.and.arrow.up") }
++                    Spacer()
++                } else {
++                    ProgressView("Iniciando câmera…")
++                }
++                if let errorMessage {
++                    Text(errorMessage).foregroundStyle(.red).font(.footnote)
++                        .multilineTextAlignment(.center).padding(.horizontal)
++                }
++            }
++            .padding()
++            .navigationTitle("Escanear objeto")
++            .navigationBarTitleDisplayMode(.inline)
++            .toolbar { ToolbarItem(placement: .topBarLeading) {
++                Button("Fechar") { close() }.disabled(reconstructing)
++            } }
++            .task { startIfSupported() }
++            .onReceive(ticker) { _ in monitorCapture() }
++            .confirmationDialog("Vire o objeto para fotografar a parte de baixo", isPresented: $needsFlip) {
++                Button("Já virei o objeto") {
++                    capture?.beginNewScanPassAfterFlip()
++                    pass = .underside
++                    passComplete = false
++                }
++                Button("Pular a parte de baixo") {
++                    pass = .underside
++                    finishCapture()
++                }
++                Button("Cancelar", role: .cancel) { capture?.resume() }
++            } message: {
++                Text("Apoie o objeto em outra face, mantendo a mesma iluminação. Depois enquadre-o novamente.")
++            }
++        }
++    }
++
++    @ViewBuilder private func captureControls(_ session: ObjectCaptureSession) -> some View {
++        if session.isPaused {
++            Button("Continuar captura") { session.resume() }
++                .buttonStyle(.borderedProminent)
++        } else {
++        switch session.state {
++        case .ready:
++            Button("Detectar objeto") {
++                if !session.startDetecting() {
++                    errorMessage = "Aponte para um objeto sobre uma superfície plana e tente novamente."
++                } else { errorMessage = nil }
++            }.buttonStyle(.borderedProminent)
++        case .detecting:
++            Button("Começar fotos") { session.startCapturing() }
++                .buttonStyle(.borderedProminent)
++        case .capturing:
++            if pass == .around {
++                Button("Próxima volta: de cima") {
++                    session.beginNewScanPass()
++                    pass = .above
++                    passComplete = false
++                }
++                .disabled(!passComplete)
++                .buttonStyle(.borderedProminent)
++            } else if pass == .above {
++                Button("Fotografar a parte de baixo") {
++                    session.pause()
++                    needsFlip = true
++                }
++                .disabled(!passComplete)
++                .buttonStyle(.borderedProminent)
++            } else {
++                Button("Gerar modelo 3D") { finishCapture() }
++                    .disabled(!passComplete)
++                    .buttonStyle(.borderedProminent)
++            }
++            if !passComplete {
++                Text("Complete o círculo indicado na câmera para continuar.")
++                    .font(.caption).foregroundStyle(.secondary)
++            }
++        default:
++            ProgressView("Salvando fotos…")
++        }
++        }
++    }
++
++    private func startIfSupported() {
++        guard capture == nil, scanFolder == nil else { return }
++        guard ObjectCaptureSession.isSupported && PhotogrammetrySession.isSupported else {
++            unavailable = true
++            return
++        }
++        do {
++            let root = try FileManager.default.url(for: .documentDirectory,
++                in: .userDomainMask, appropriateFor: nil, create: true)
++                .appendingPathComponent("Scans", isDirectory: true)
++                .appendingPathComponent(UUID().uuidString, isDirectory: true)
++            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
++            let session = ObjectCaptureSession()
++            session.start(imagesDirectory: root.appendingPathComponent("Images", isDirectory: true))
++            scanFolder = root
++            capture = session
++        } catch { errorMessage = "Não foi possível iniciar a captura: \(error.localizedDescription)" }
++    }
++
++    private func monitorCapture() {
++        guard let capture else { return }
++        shotCount = capture.numberOfShotsTaken
++        passComplete = capture.userCompletedScanPass
++        switch capture.state {
++        case .completed:
++            if !reconstructionAttempted { reconstruct() }
++        case .failed(let error):
++            errorMessage = "Falha na captura: \(error.localizedDescription)"
++        default: break
++        }
++    }
++
++    private func finishCapture() {
++        guard shotCount >= 20 else {
++            errorMessage = "Capture pelo menos 20 fotos de ângulos diferentes."
++            return
++        }
++        capture?.finish()
++    }
++
++    private func reconstruct() {
++        guard let root = scanFolder else { return }
++        reconstructionAttempted = true
++        reconstructing = true
++        errorMessage = nil
++        Task {
++            do {
++                let input = root.appendingPathComponent("Images", isDirectory: true)
++                let usdz = root.appendingPathComponent("Scan.usdz")
++                let session = try PhotogrammetrySession(input: input)
++                let request = PhotogrammetrySession.Request.modelFile(url: usdz, detail: .reduced)
++                let outputs = Task {
++                    for try await output in session.outputs {
++                        switch output {
++                        case .requestProgress(_, let fraction):
++                            reconstructionProgress = fraction
++                        case .requestError(_, let error):
++                            throw error
++                        case .requestComplete(_, let result):
++                            if case .modelFile(let outputURL) = result {
++                                let stl = root.appendingPathComponent("Scan.stl")
++                                try await Task.detached(priority: .userInitiated) {
++                                    try ScannedSTL.write(from: outputURL, to: stl)
++                                }.value
++                                modelURL = stl
++                            }
++                        default: break
++                        }
++                    }
++                }
++                do { try session.process(requests: [request]) }
++                catch {
++                    outputs.cancel()
++                    throw error
++                }
++                try await outputs.value
++                if modelURL == nil { throw ScannerError.noMesh }
++            } catch {
++                errorMessage = "Não foi possível criar o STL: \(error.localizedDescription). As fotos permanecem em Arquivos > SnapSlice > Scans."
++            }
++            reconstructing = false
++        }
++    }
++
++    private func close() {
++        if !reconstructing && modelURL == nil { capture?.cancel() }
++        onClose()
++    }
++}
++
++private enum ScannerError: LocalizedError {
++    case noMesh, unsupportedVertexFormat, tooLarge
++    var errorDescription: String? {
++        switch self {
++        case .noMesh: return "A reconstrução não produziu triângulos"
++        case .unsupportedVertexFormat: return "O formato da malha não pode ser convertido"
++        case .tooLarge: return "O modelo ultrapassa o limite de 50 MB do fatiador"
++        }
++    }
++}
++
++/// Converts RealityKit's meter-based USDZ mesh into a millimeter-based binary
++/// STL with its lowest point on the build plate and X/Y centered at the origin.
++private enum ScannedSTL {
++    static func write(from input: URL, to output: URL) throws {
++        let scene = try SCNScene(url: input, options: nil)
++        var triangles: [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)] = []
++        func visit(_ node: SCNNode) throws {
++            if let geometry = node.geometry,
++               let source = geometry.sources(for: .vertex).first {
++                let vertices = try positions(source).map { vertex -> SIMD3<Float> in
++                    let transformed = node.convertPosition(SCNVector3(vertex.x, vertex.y, vertex.z), to: nil)
++                    return SIMD3<Float>(transformed.x, -transformed.z, transformed.y) * 1000
++                }
++                for element in geometry.elements where element.primitiveType == .triangles {
++                    let indices = try triangleIndices(element)
++                    for i in stride(from: 0, to: indices.count, by: 3) {
++                        let a = indices[i], b = indices[i + 1], c = indices[i + 2]
++                        guard a < vertices.count, b < vertices.count, c < vertices.count else { continue }
++                        let v = (vertices[a], vertices[b], vertices[c])
++                        if [v.0, v.1, v.2].allSatisfy({ $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }) &&
++                            simd_length_squared(simd_cross(v.1 - v.0, v.2 - v.0)) > 0.000001 {
++                            triangles.append(v)
++                        }
++                    }
++                }
++            }
++            for child in node.childNodes { try visit(child) }
++        }
++        try visit(scene.rootNode)
++        guard !triangles.isEmpty else { throw ScannerError.noMesh }
++        guard triangles.count <= 900_000 else { throw ScannerError.tooLarge }
++        var lower = SIMD3<Float>(repeating: .infinity)
++        var upper = SIMD3<Float>(repeating: -.infinity)
++        for triangle in triangles {
++            for point in [triangle.0, triangle.1, triangle.2] {
++                lower = simd_min(lower, point)
++                upper = simd_max(upper, point)
++            }
++        }
++        let offset = SIMD3<Float>(-(lower.x + upper.x) / 2, -(lower.y + upper.y) / 2, -lower.z)
++        var data = Data(repeating: 0, count: 80)
++        data.appendLE(UInt32(triangles.count))
++        for triangle in triangles {
++            let a = triangle.0 + offset, b = triangle.1 + offset, c = triangle.2 + offset
++            let normal = simd_normalize(simd_cross(b - a, c - a))
++            for point in [normal, a, b, c] {
++                data.appendLE(point.x.bitPattern)
++                data.appendLE(point.y.bitPattern)
++                data.appendLE(point.z.bitPattern)
++            }
++            data.appendLE(UInt16(0))
++        }
++        try data.write(to: output, options: .atomic)
++    }
++
++    private static func positions(_ source: SCNGeometrySource) throws -> [SIMD3<Float>] {
++        guard source.usesFloatComponents, source.componentsPerVector >= 3,
++              [4, 8].contains(source.bytesPerComponent) else { throw ScannerError.unsupportedVertexFormat }
++        return try source.data.withUnsafeBytes { bytes in
++            try (0..<source.vectorCount).map { index in
++                let base = source.dataOffset + index * source.dataStride
++                let width = source.bytesPerComponent
++                guard base + width * 3 <= bytes.count else { throw ScannerError.unsupportedVertexFormat }
++                func component(_ part: Int) -> Float {
++                    let position = base + part * width
++                    if width == 4 {
++                        return Float(bitPattern: UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: position, as: UInt32.self)))
++                    }
++                    return Float(Double(bitPattern: UInt64(littleEndian: bytes.loadUnaligned(fromByteOffset: position, as: UInt64.self))))
++                }
++                return SIMD3<Float>(component(0), component(1), component(2))
++            }
++        }
++    }
++
++    private static func triangleIndices(_ element: SCNGeometryElement) throws -> [Int] {
++        let count = element.primitiveCount * 3
++        let width = element.bytesPerIndex
++        guard [1, 2, 4].contains(width), count * width <= element.data.count else {
++            throw ScannerError.unsupportedVertexFormat
++        }
++        return element.data.withUnsafeBytes { bytes in
++            (0..<count).map { index in
++                let offset = index * width
++                switch width {
++                case 1: return Int(bytes.load(fromByteOffset: offset, as: UInt8.self))
++                case 2: return Int(UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: UInt16.self)))
++                default: return Int(UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self)))
++                }
++            }
++        }
++    }
++}
++
++private extension Data {
++    mutating func appendLE(_ value: UInt32) {
++        var little = value.littleEndian
++        Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
++    }
++    mutating func appendLE(_ value: UInt16) {
++        var little = value.littleEndian
++        Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
++    }
++}
