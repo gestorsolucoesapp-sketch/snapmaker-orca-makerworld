@@ -136,6 +136,14 @@ struct ContentView: View {
                         .keyboardType(.numberPad)
                     Button("Testar conexão") { Task { await store.testConnection() } }
                         .disabled(store.isBusy)
+                    Button("Usar configuração recebida pelo cabo") {
+                        if store.loadConnectionFromCable(force: true) {
+                            internet = true
+                            store.status = "Endereço e código do computador configurados pelo cabo."
+                        } else {
+                            store.status = "Conecte e desbloqueie o iPhone no PC para receber a configuração."
+                        }
+                    }
                     Text("Para usar pela internet, deixe o Tailscale ligado no iPhone e no computador.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text("Os arquivos serão guardados em uma pasta separada no disco D:.")
@@ -174,7 +182,10 @@ struct ContentView: View {
             }
             .navigationTitle("Guarda Mídias")
         }
-        .task { await store.monitorCableReceipts() }
+        .task {
+            if store.loadConnectionFromCable() { internet = true }
+            await store.monitorCableReceipts()
+        }
         .confirmationDialog("Guardar e apagar do iPhone?", isPresented: $confirmBackupAndDelete, titleVisibility: .visible) {
             Button("Guardar e apagar as cópias conferidas", role: .destructive) {
                 Task { await store.sendSelected(deleteAfterBackup: true) }

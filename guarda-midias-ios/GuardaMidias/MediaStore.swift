@@ -40,6 +40,11 @@ struct CableProgress: Decodable {
     let speed: Double
 }
 
+struct CableConnection: Decodable {
+    let serverURL: String
+    let accessCode: String
+}
+
 final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let onProgress: @Sendable (Int64, Int64) -> Void
 
@@ -90,6 +95,21 @@ final class MediaStore: ObservableObject {
         UserDefaults.standard.set(accessCode, forKey: "accessCode")
     }
 
+    @discardableResult
+    func loadConnectionFromCable(force: Bool = false) -> Bool {
+        if !force && !accessCode.isEmpty { return false }
+        let configURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("GuardaMidiasConnection.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let config = try? JSONDecoder().decode(CableConnection.self, from: data),
+              let url = URL(string: config.serverURL), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              config.accessCode.count == 10, config.accessCode.allSatisfy(\.isNumber) else { return false }
+        serverURL = config.serverURL
+        accessCode = config.accessCode
+        saveConnection()
+        return true
+    }
+
     func clearSearch() {
         entries = []
         selected = []
@@ -101,6 +121,7 @@ final class MediaStore: ObservableObject {
     }
 
     func testConnection() async {
+        loadConnectionFromCable()
         guard let base = URL(string: serverURL), ["http", "https"].contains(base.scheme?.lowercased() ?? ""),
               !accessCode.isEmpty else {
             status = "Informe o endereço do computador e o código de acesso."
@@ -184,6 +205,7 @@ final class MediaStore: ObservableObject {
     }
 
     func sendSelected(deleteAfterBackup: Bool = false) async {
+        loadConnectionFromCable()
         hasTransferAttempt = true
         transferProgress = 0
         transferSpeed = 0

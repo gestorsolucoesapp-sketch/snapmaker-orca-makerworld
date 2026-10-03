@@ -21,7 +21,9 @@ from pymobiledevice3.services.house_arrest import HouseArrestService
 
 BACKUP_DIR = Path(os.environ.get("MEDIA_BACKUP_DIR", r"D:\Backup-Midias-iPhone"))
 BUNDLE_ID = os.environ.get("MEDIA_BUNDLE_ID", "com.gestorsolucoesapp.guardamidias.7DS8UWQ92T")
+SERVER_URL = os.environ.get("MEDIA_SERVER_URL", "http://100.113.163.32:8765")
 QUEUE = "/Documents/CableQueue"
+CONNECTION_CONFIG = "/Library/Application Support/GuardaMidiasConnection.json"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif",
                       ".mp4", ".mov", ".m4v", ".avi", ".dng", ".tif", ".tiff"}
 MAX_SIZE = 8 * 1024**3
@@ -124,6 +126,13 @@ async def import_one(service: HouseArrestService, manifest: dict, backup_dir: Pa
 async def sync_once() -> int:
     lockdown = await create_using_usbmux()
     async with await HouseArrestService.create(lockdown, BUNDLE_ID, documents_only=False) as service:
+        token_file = BACKUP_DIR / ".access-token"
+        if token_file.is_file():
+            await service.makedirs("/Library/Application Support")
+            config = {"serverURL": SERVER_URL, "accessCode": token_file.read_text(encoding="utf-8").strip()}
+            await service.set_file_contents(CONNECTION_CONFIG, json.dumps(config).encode("utf-8"))
+        if not await service.isdir(QUEUE):
+            return 0
         names = await service.listdir(QUEUE)
         imported = 0
         for name in names:
