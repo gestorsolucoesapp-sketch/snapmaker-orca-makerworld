@@ -6,7 +6,7 @@ struct ContentView: View {
     @StateObject private var store = MediaStore()
     @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var through = Date()
-    @State private var internet = true
+    @State private var internet = UserDefaults.standard.string(forKey: "serverURL") != "http://192.168.68.82:8765"
 
     var body: some View {
         NavigationStack {
