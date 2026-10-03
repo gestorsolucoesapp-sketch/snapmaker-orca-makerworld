@@ -30,7 +30,7 @@ commit_lock = asyncio.Lock()
 def access_token() -> str:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     if not TOKEN_FILE.exists():
-        TOKEN_FILE.write_text(secrets.token_urlsafe(32), encoding="utf-8")
+        TOKEN_FILE.write_text(f"{secrets.randbelow(10**10):010d}", encoding="utf-8")
     return TOKEN_FILE.read_text(encoding="utf-8").strip()
 
 
