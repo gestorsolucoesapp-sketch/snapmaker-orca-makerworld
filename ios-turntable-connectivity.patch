@@ -1,0 +1,328 @@
+diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
+index 7556c9b..dccd370 100644
+--- a/ios/SnapSliceNativeHarness/ContentView.swift
++++ b/ios/SnapSliceNativeHarness/ContentView.swift
+@@ -1750,6 +1750,10 @@ struct ContentView: View {
+             }.buttonStyle(.borderedProminent).disabled(model.isConnecting)
+             Text(model.printerMessage).font(.caption)
+                 .foregroundStyle(model.isPrinterConnected ? Color.green : Color.secondary)
++            if !model.isPrinterConnected {
++                Text("If the U1 goes offline when you plug in the iPhone, turn off Personal Hotspot on the iPhone. Keep Wi-Fi or Tailscale connected, then tap Connect again. The USB cable can stay plugged in.")
++                    .font(.caption2).foregroundStyle(.secondary)
++            }
+             if let updated = model.printerUpdatedAt {
+                 Text("Last successful update \(updated, style: .relative) ago")
+                     .font(.caption2).foregroundStyle(.secondary)
+diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
+index 80c9461..da6879c 100644
+--- a/ios/SnapSliceNativeHarness/ObjectScannerView.swift
++++ b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
+@@ -3,6 +3,7 @@ import Combine
+ import RealityKit
+ import SceneKit
+ import simd
++import AVFoundation
+ 
+ /// Guided, entirely on-device object capture. The STL is intentionally treated as
+ /// a draft until the user checks its dimensions and mesh in Prepare.
+@@ -22,6 +23,8 @@ import simd
+         }
+     }
+ 
++    private let turntableShotsPerPass = 24
++
+     @State private var capture: ObjectCaptureSession?
+     @State private var pass: Pass = .around
+     @State private var scanFolder: URL?
+@@ -36,6 +39,15 @@ import simd
+     @State private var unavailable = false
+     @State private var lightGuidance = ScanGuidance.waitingForLight
+     @State private var captureGuidance = ScanGuidance.waitingForObject
++    @State private var useTurntable = false
++    @State private var motorizedTurntable = false
++    @State private var secondsPerRevolution = 60
++    @State private var passStartShots = 0
++    @State private var nextAutomaticShot = Date.distantPast
++    @State private var torchEnabled = false
++    @State private var torchLevel = 0.5
++    @State private var exposureBias = 0.0
++    @State private var needsTopTilt = false
+     private let ticker = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+ 
+     var body: some View {
+@@ -56,8 +68,33 @@ import simd
+                         guidanceBadge("Luz", guidance: lightGuidance)
+                         guidanceBadge("Captura", guidance: captureGuidance)
+                     }
+-                    Text(pass.instruction).font(.headline).multilineTextAlignment(.center)
+-                    Text("Use luz difusa e um objeto rígido e fosco. Mantenha-o inteiro no enquadramento.")
++                    lightingControls
++                    Picker("Modo", selection: $useTurntable) {
++                        Text("Andar em volta").tag(false)
++                        Text("Prato giratório").tag(true)
++                    }
++                    .pickerStyle(.segmented)
++                    .disabled(!canChooseMode)
++                    if useTurntable {
++                        Toggle("Prato com motor", isOn: $motorizedTurntable)
++                            .disabled(!canChooseMode)
++                        if motorizedTurntable {
++                            Stepper("Uma volta em \(secondsPerRevolution) segundos",
++                                    value: $secondsPerRevolution, in: 30...180, step: 5)
++                                .disabled(!canChooseMode)
++                        }
++                        Text(turntableInstruction)
++                            .font(.headline).multilineTextAlignment(.center)
++                        Text("\(min(max(0, shotCount - passStartShots), turntableShotsPerPass)) de \(turntableShotsPerPass) fotos nesta volta")
++                            .font(.subheadline.monospacedDigit())
++                        ProgressView(value: Double(max(0, shotCount - passStartShots)),
++                                     total: Double(turntableShotsPerPass))
++                        Text("Mantenha o iPhone imóvel. Use fundo liso, luz difusa e gire só a peça. O prato não deve esconder detalhes do objeto.")
++                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
++                    } else {
++                        Text(pass.instruction).font(.headline).multilineTextAlignment(.center)
++                    }
++                    Text("Use um objeto rígido e fosco. Mantenha-o inteiro no enquadramento.")
+                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                     captureControls(capture)
+                 } else if reconstructing {
+@@ -99,9 +136,12 @@ import simd
+             .onReceive(ticker) { _ in monitorCapture() }
+             .confirmationDialog("Vire o objeto para fotografar a parte de baixo", isPresented: $needsFlip) {
+                 Button("Já virei o objeto") {
+-                    capture?.beginNewScanPassAfterFlip()
++                    if useTurntable { capture?.resume() }
++                    else { capture?.beginNewScanPassAfterFlip() }
+                     pass = .underside
+                     passComplete = false
++                    passStartShots = shotCount
++                    nextAutomaticShot = Date()
+                 }
+                 Button("Pular a parte de baixo") {
+                     pass = .underside
+@@ -111,6 +151,19 @@ import simd
+             } message: {
+                 Text("Apoie o objeto em outra face, mantendo a mesma iluminação. Depois enquadre-o novamente.")
+             }
++            .confirmationDialog("Ajuste a câmera para a foto de cima", isPresented: $needsTopTilt) {
++                Button("Câmera posicionada") {
++                    capture?.resume()
++                    pass = .above
++                    passComplete = false
++                    passStartShots = shotCount
++                    nextAutomaticShot = Date()
++                }
++                Button("Cancelar", role: .cancel) { capture?.resume() }
++            } message: {
++                Text("Pare o prato, incline o iPhone para baixo e fixe-o antes de continuar.")
++            }
++            .onDisappear { resetCameraControls() }
+         }
+     }
+ 
+@@ -147,14 +200,34 @@ import simd
+                 } else { errorMessage = nil }
+             }.buttonStyle(.borderedProminent)
+         case .detecting:
+-            Button("Começar fotos") { session.startCapturing() }
++            Button("Começar fotos") {
++                passStartShots = session.numberOfShotsTaken
++                nextAutomaticShot = Date()
++                session.startCapturing()
++            }
+                 .buttonStyle(.borderedProminent)
+         case .capturing:
++            if useTurntable && !motorizedTurntable && !passComplete {
++                Button("Fotografar próximo ângulo") {
++                    session.requestImageCapture()
++                }
++                .disabled(!session.canRequestImageCapture)
++                .buttonStyle(.borderedProminent)
++                Text("Gire a peça cerca de 15° antes de cada foto. O iPhone permanece parado.")
++                    .font(.caption).foregroundStyle(.secondary)
++            }
+             if pass == .around {
+                 Button("Próxima volta: de cima") {
+-                    session.beginNewScanPass()
+-                    pass = .above
+-                    passComplete = false
++                    if useTurntable {
++                        session.pause()
++                        needsTopTilt = true
++                    } else {
++                        session.beginNewScanPass()
++                        pass = .above
++                        passComplete = false
++                        passStartShots = shotCount
++                        nextAutomaticShot = Date()
++                    }
+                 }
+                 .disabled(!passComplete)
+                 .buttonStyle(.borderedProminent)
+@@ -171,7 +244,8 @@ import simd
+                     .buttonStyle(.borderedProminent)
+             }
+             if !passComplete {
+-                Text("Complete o círculo indicado na câmera para continuar.")
++                Text(useTurntable ? "Complete 24 fotos desta volta para continuar." :
++                        "Complete o círculo indicado na câmera para continuar.")
+                     .font(.caption).foregroundStyle(.secondary)
+             }
+         default:
+@@ -202,8 +276,16 @@ import simd
+     private func monitorCapture() {
+         guard let capture else { return }
+         shotCount = capture.numberOfShotsTaken
+-        passComplete = capture.userCompletedScanPass
++        passComplete = useTurntable ? shotCount - passStartShots >= turntableShotsPerPass :
++            capture.userCompletedScanPass
+         updateGuidance(for: capture)
++        if useTurntable && motorizedTurntable && !passComplete,
++           case .capturing = capture.state,
++           capture.canRequestImageCapture && Date() >= nextAutomaticShot {
++            capture.requestImageCapture()
++            nextAutomaticShot = Date().addingTimeInterval(Double(secondsPerRevolution) /
++                Double(turntableShotsPerPass))
++        }
+         switch capture.state {
+         case .completed:
+             if !reconstructionAttempted { reconstruct() }
+@@ -230,7 +312,7 @@ import simd
+         } else if feedback.contains(.environmentTooDark) || feedback.contains(.environmentLowLight) {
+             captureGuidance = .problem("Melhore a luz antes de continuar")
+         } else if feedback.contains(.movingTooFast) {
+-            captureGuidance = .problem("Mova o iPhone mais devagar")
++            captureGuidance = .problem(useTurntable ? "Gire o prato mais devagar" : "Mova o iPhone mais devagar")
+         } else if feedback.contains(.objectTooClose) {
+             captureGuidance = .problem("Afaste um pouco o iPhone")
+         } else if feedback.contains(.objectTooFar) {
+@@ -244,9 +326,11 @@ import simd
+         } else if feedback.contains(.overCapturing) {
+             captureGuidance = .problem("Limite de fotos atingido")
+         } else if session.cameraTracking != .normal {
+-            captureGuidance = .problem("Rastreamento instável. Mova devagar.")
++            captureGuidance = .problem(useTurntable ? "Rastreamento instável. Gire devagar." :
++                "Rastreamento instável. Mova devagar.")
+         } else if case .capturing = session.state {
+-            captureGuidance = .good("Boa leitura. Continue a volta.")
++            captureGuidance = .good(useTurntable ? "Boa leitura. Continue girando a peça." :
++                "Boa leitura. Continue a volta.")
+         } else {
+             captureGuidance = .waitingForObject
+         }
+@@ -276,7 +360,13 @@ import simd
+             do {
+                 let input = root.appendingPathComponent("Images", isDirectory: true)
+                 let usdz = root.appendingPathComponent("Scan.usdz")
+-                let session = try PhotogrammetrySession(input: input)
++                var configuration = PhotogrammetrySession.Configuration()
++                if useTurntable {
++                    configuration.isObjectMaskingEnabled = true
++                    configuration.sampleOrdering = .sequential
++                    configuration.featureSensitivity = .high
++                }
++                let session = try PhotogrammetrySession(input: input, configuration: configuration)
+                 let request = PhotogrammetrySession.Request.modelFile(url: usdz, detail: .reduced)
+                 let outputs = Task {
+                     for try await output in session.outputs {
+@@ -311,7 +401,100 @@ import simd
+         }
+     }
+ 
++    private var turntableInstruction: String {
++        switch pass {
++        case .around:
++            return "Deixe o iPhone na altura do meio. Gire a peça uma volta completa."
++        case .above:
++            return "Pare o prato, incline o iPhone para baixo e fixe-o. Gire a peça mais uma volta."
++        case .underside:
++            return "Vire a peça, fixe o iPhone mirando a parte de baixo e gire mais uma volta."
++        }
++    }
++
++    private var canChooseMode: Bool {
++        guard let capture else { return false }
++        if case .ready = capture.state { return true }
++        return false
++    }
++
++    private var lightingControls: some View {
++        VStack(alignment: .leading, spacing: 8) {
++            HStack {
++                Toggle(isOn: $torchEnabled) {
++                    Label("Lanterna", systemImage: torchEnabled ? "flashlight.on.fill" : "flashlight.off.fill")
++                }
++                .onChange(of: torchEnabled) { _, enabled in updateCameraControls(torch: enabled) }
++            }
++            if torchEnabled {
++                HStack {
++                    Image(systemName: "flashlight.on.fill")
++                    Slider(value: $torchLevel, in: 0.1...1.0)
++                        .onChange(of: torchLevel) { _, _ in updateCameraControls() }
++                    Text("\(Int(torchLevel * 100))%")
++                        .font(.caption.monospacedDigit())
++                        .frame(width: 42, alignment: .trailing)
++                }
++            }
++            HStack {
++                Image(systemName: "sun.min")
++                Slider(value: $exposureBias, in: -2.0...2.0, step: 0.25)
++                    .onChange(of: exposureBias) { _, _ in updateCameraControls() }
++                Image(systemName: "sun.max")
++                Text(String(format: "%+.2f", exposureBias))
++                    .font(.caption.monospacedDigit())
++                    .frame(width: 48, alignment: .trailing)
++            }
++            Text("Claridade da câmera. Evite brilho forte, sombras duras e reflexos na peça.")
++                .font(.caption).foregroundStyle(.secondary)
++        }
++        .padding(10)
++        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
++    }
++
++    private func updateCameraControls(torch: Bool? = nil) {
++        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
++            errorMessage = "A câmera traseira não está disponível para ajustar a luz."
++            torchEnabled = false
++            return
++        }
++        do {
++            try device.lockForConfiguration()
++            defer { device.unlockForConfiguration() }
++            if let torch {
++                if torch {
++                    guard device.hasTorch && device.isTorchAvailable else {
++                        torchEnabled = false
++                        errorMessage = "A lanterna não está disponível durante esta captura. Use uma luz externa."
++                        return
++                    }
++                    try device.setTorchModeOn(level: Float(torchLevel))
++                } else {
++                    device.torchMode = .off
++                }
++            } else if torchEnabled && device.hasTorch && device.isTorchAvailable {
++                try device.setTorchModeOn(level: Float(torchLevel))
++            }
++            let bias = Float(exposureBias)
++            let supportedBias = min(max(bias, device.minExposureTargetBias), device.maxExposureTargetBias)
++            device.setExposureTargetBias(supportedBias, completionHandler: nil)
++            errorMessage = nil
++        } catch {
++            errorMessage = "Não foi possível ajustar a câmera nesta captura: \(error.localizedDescription)"
++            if torch == true { torchEnabled = false }
++        }
++    }
++
++    private func resetCameraControls() {
++        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
++              (try? device.lockForConfiguration()) != nil else { return }
++        defer { device.unlockForConfiguration() }
++        if device.hasTorch { device.torchMode = .off }
++        device.setExposureTargetBias(0, completionHandler: nil)
++    }
++
+     private func close() {
++        resetCameraControls()
+         if !reconstructing && modelURL == nil { capture?.cancel() }
+         onClose()
+     }
