@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var store = MediaStore()
     @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var through = Date()
+    @State private var internet = true
 
     var body: some View {
         NavigationStack {
@@ -16,9 +17,20 @@ struct ContentView: View {
                         .disabled(store.isBusy)
                 }
                 Section("Conexão com o computador") {
+                    Picker("Local", selection: $internet) {
+                        Text("Pela internet").tag(true)
+                        Text("Em casa").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: internet) { _, remote in
+                        store.serverURL = remote ? "http://100.113.163.32:8765" : "http://192.168.68.82:8765"
+                    }
                     TextField("Endereço", text: $store.serverURL)
                         .textInputAutocapitalization(.never).keyboardType(.URL)
                     SecureField("Código de acesso", text: $store.accessCode)
+                        .keyboardType(.numberPad)
+                    Text("Para usar pela internet, deixe o Tailscale ligado no iPhone e no computador.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Os arquivos serão guardados em uma pasta separada no disco D:.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

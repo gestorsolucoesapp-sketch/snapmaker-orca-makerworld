@@ -26,7 +26,7 @@ final class MediaStore: ObservableObject {
     @Published var status = "Escolha o período e toque em Buscar fotos."
     @Published var isBusy = false
     @Published var backedUp: Set<String> = []
-    @Published var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://192.168.68.82:8765"
+    @Published var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://100.113.163.32:8765"
     @Published var accessCode = UserDefaults.standard.string(forKey: "accessCode") ?? ""
     @Published var minimumMB = 5
 
