@@ -15,6 +15,7 @@ jobs:
           sparse-checkout: |
             ios-makerworld.patch
             ios-object-scanner.patch
+            ios-turntable-connectivity.patch
           sparse-checkout-cone-mode: false
       - name: Fetch pinned SnapSlice source
         run: |
@@ -28,6 +29,9 @@ jobs:
           python3 -c "from pathlib import Path; p=Path('ios-object-scanner.patch'); p.write_bytes(p.read_bytes().replace(b'\r\n', b'\n'))"
           git -C source apply --check ../ios-object-scanner.patch
           git -C source apply ../ios-object-scanner.patch
+          python3 -c "from pathlib import Path; p=Path('ios-turntable-connectivity.patch'); p.write_bytes(p.read_bytes().replace(b'\r\n', b'\n'))"
+          git -C source apply --check ../ios-turntable-connectivity.patch
+          git -C source apply ../ios-turntable-connectivity.patch
       - uses: actions/setup-node@v4
         with:
           node-version: 22
