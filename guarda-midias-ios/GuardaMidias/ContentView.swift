@@ -1,5 +1,6 @@
 import Photos
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var store = MediaStore()
@@ -11,13 +12,46 @@ struct ContentView: View {
         NavigationStack {
             Form {
                 Section("Período das fotos") {
-                    DatePicker("De", selection: $from, displayedComponents: .date)
-                    DatePicker("Até", selection: $through, in: from..., displayedComponents: .date)
+                    Button("Todo o histórico até hoje") {
+                        from = Calendar.current.date(from: DateComponents(year: 1900, month: 1, day: 1)) ?? .distantPast
+                        through = Date()
+                    }
+                    DatePicker("De", selection: $from, displayedComponents: .date).disabled(store.isBusy)
+                    DatePicker("Até", selection: $through, in: from..., displayedComponents: .date).disabled(store.isBusy)
                     Button("Buscar fotos e vídeos") { Task { await store.find(from: from, through: through) } }
                         .disabled(store.isBusy)
                 }
                 .onChange(of: from) { _, _ in store.clearSearch() }
                 .onChange(of: through) { _, _ in store.clearSearch() }
+                Section("Encontradas no período") {
+                    if store.hasSearched {
+                        Text("\(store.entries.count) mídias encontradas")
+                            .font(.title2.bold())
+                        Text("\(store.photoCount) fotos · \(store.videoCount) vídeos · \(store.importedFileCount) arquivos importados")
+                        Text("\(store.selected.count) selecionadas para guardar")
+                            .foregroundStyle(.secondary)
+                        if store.limitedPhotoAccess {
+                            Text("O iPhone autorizou apenas parte da fototeca. Para encontrar todas, permita acesso a Todas as Fotos nos Ajustes.")
+                                .foregroundStyle(.orange)
+                            Button("Abrir Ajustes das Fotos") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                            }
+                        } else {
+                            Text("\(store.accessibleLibraryCount) mídias acessíveis na fototeca inteira.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button("Selecionar todas as encontradas") { store.selected = Set(store.entries.map(\.id)) }
+                            .disabled(store.entries.isEmpty || store.isBusy)
+                        Button("Limpar seleção") { store.selected = [] }
+                            .disabled(store.selected.isEmpty || store.isBusy)
+                        Button("Guardar \(store.selected.count) selecionadas no computador") { Task { await store.sendSelected() } }
+                            .disabled(store.isBusy || store.selected.isEmpty)
+                    } else {
+                        Text("Escolha o período e toque em Buscar para ver o total.")
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(store.status).font(.caption)
+                }
                 Section("Conexão com o computador") {
                     Picker("Local", selection: $internet) {
                         Text("Pela internet").tag(true)
@@ -40,8 +74,6 @@ struct ContentView: View {
                 }
                 Section("Arquivos") {
                     if !store.entries.isEmpty {
-                        Button("Selecionar todos do período") { store.selected = Set(store.entries.map(\.id)) }
-                        Button("Limpar seleção") { store.selected = [] }
                         Stepper("Tamanho mínimo: \(store.minimumMB) MB", value: $store.minimumMB, in: 0...100, step: 1)
                     }
                     ForEach(store.entries) { entry in
@@ -64,12 +96,7 @@ struct ContentView: View {
                         }
                         .foregroundStyle(.primary)
                     }
-                    if !store.entries.isEmpty {
-                        Button("Guardar \(store.selected.count) no computador") { Task { await store.sendSelected() } }
-                            .disabled(store.isBusy || store.selected.isEmpty)
-                    }
                 }
-                Section("Situação") { Text(store.status) }
                 Section("Importante") {
                     Text("O app pode ler Fotos após sua permissão e arquivos salvos em No Meu iPhone > Guarda Mídias. Mídias que estão só dentro do WhatsApp precisam ser compartilhadas para Fotos ou Arquivos.")
                     Text("Depois da cópia confirmada, apague os originais no próprio WhatsApp para liberar espaço. Este app nunca apaga conversas ou mídias automaticamente.")

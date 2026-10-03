@@ -29,6 +29,12 @@ final class MediaStore: ObservableObject {
     @Published var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://100.113.163.32:8765"
     @Published var accessCode = UserDefaults.standard.string(forKey: "accessCode") ?? ""
     @Published var minimumMB = 5
+    @Published var hasSearched = false
+    @Published var limitedPhotoAccess = false
+    @Published var accessibleLibraryCount = 0
+    @Published var photoCount = 0
+    @Published var videoCount = 0
+    @Published var importedFileCount = 0
 
     func saveConnection() {
         UserDefaults.standard.set(serverURL, forKey: "serverURL")
@@ -38,6 +44,10 @@ final class MediaStore: ObservableObject {
     func clearSearch() {
         entries = []
         selected = []
+        hasSearched = false
+        photoCount = 0
+        videoCount = 0
+        importedFileCount = 0
         status = "Período alterado. Toque em Buscar fotos e vídeos novamente."
     }
 
@@ -75,8 +85,13 @@ final class MediaStore: ObservableObject {
         status = "Procurando fotos no período…"
         defer { isBusy = false }
         let auth = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        limitedPhotoAccess = auth == .limited
         var found: [MediaEntry] = []
+        var images = 0
+        var videos = 0
+        var imported = 0
         if auth == .authorized || auth == .limited {
+            accessibleLibraryCount = PHAsset.fetchAssets(with: nil).count
             let options = PHFetchOptions()
             let calendar = Calendar.current
             let first = calendar.startOfDay(for: start)
@@ -86,12 +101,15 @@ final class MediaStore: ObservableObject {
             let result = PHAsset.fetchAssets(with: options)
             result.enumerateObjects { asset, _, _ in
                 guard asset.mediaType == .image || asset.mediaType == .video else { return }
+                if asset.mediaType == .image { images += 1 } else { videos += 1 }
                 let resource = PHAssetResource.assetResources(for: asset).first
                 found.append(MediaEntry(id: asset.localIdentifier,
                                         name: resource?.originalFilename ?? "Mídia",
                                         date: asset.creationDate ?? first,
                                         source: .photo(asset)))
             }
+        } else {
+            accessibleLibraryCount = 0
         }
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         if let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) {
@@ -101,12 +119,17 @@ final class MediaStore: ObservableObject {
                 let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
                 if date >= calendar.startOfDay(for: start), date < (calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end) {
                     found.append(MediaEntry(id: file.path, name: file.lastPathComponent, date: date, source: .file(file)))
+                    imported += 1
                 }
             }
         }
         entries = found.sorted { $0.date > $1.date }
+        photoCount = images
+        videoCount = videos
+        importedFileCount = imported
+        hasSearched = true
         selected = []
-        status = "\(entries.count) mídia(s) encontradas. Selecione as que deseja guardar."
+        status = "Busca concluída. Selecione as mídias desejadas antes de guardar."
     }
 
     func sendSelected() async {
