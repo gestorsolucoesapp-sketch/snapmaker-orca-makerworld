@@ -132,7 +132,7 @@ final class MediaStore: ObservableObject {
         status = "Busca concluída. Selecione as mídias desejadas antes de guardar."
     }
 
-    func sendSelected() async {
+    func sendSelected(deleteAfterBackup: Bool = false) async {
         guard let base = URL(string: serverURL), ["http", "https"].contains(base.scheme?.lowercased() ?? ""),
               !accessCode.isEmpty else {
             status = "Confira o endereço do computador e o código de acesso."
@@ -145,6 +145,8 @@ final class MediaStore: ObservableObject {
         var success = 0
         var skipped = 0
         var failed = 0
+        var retainedComplex = 0
+        var verifiedForRemoval: [MediaEntry] = []
         for (index, entry) in chosen.enumerated() {
             status = "Verificando \(index + 1) de \(chosen.count): \(entry.name)"
             do {
@@ -168,12 +170,95 @@ final class MediaStore: ObservableObject {
                 }
                 backedUp.insert(entry.id)
                 success += 1
+                if deleteAfterBackup {
+                    try await verifySavedCopy(receipt, at: base)
+                    switch entry.source {
+                    case .file:
+                        verifiedForRemoval.append(entry)
+                    case .photo(let asset):
+                        // A single uploaded resource cannot preserve all parts of a Live Photo or edited asset.
+                        let resources = PHAssetResource.assetResources(for: asset)
+                        if resources.count == 1 && !asset.mediaSubtypes.contains(.photoLive) {
+                            verifiedForRemoval.append(entry)
+                        } else {
+                            retainedComplex += 1
+                        }
+                    }
+                }
             } catch {
                 failed += 1
                 status = "Falha em \(entry.name): \(error.localizedDescription)"
             }
         }
-        status = "\(success) guardado(s) e conferido(s) no PC. \(skipped) abaixo de \(minimumMB) MB. \(failed) falha(s). Nada foi apagado do iPhone."
+        if !deleteAfterBackup {
+            status = "\(success) guardado(s) e conferido(s) no PC. \(skipped) abaixo de \(minimumMB) MB. \(failed) falha(s). Nada foi apagado do iPhone."
+            return
+        }
+        status = "Cópias conferidas. Aguardando confirmação do iPhone para apagar os originais…"
+        let photos = verifiedForRemoval.compactMap { entry -> PHAsset? in
+            if case .photo(let asset) = entry.source { return asset }
+            return nil
+        }
+        var removed = 0
+        var removalFailed = 0
+        var removedIDs: Set<String> = []
+        if !photos.isEmpty {
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.deleteAssets(photos as NSArray)
+                }
+                removed += photos.count
+                removedIDs.formUnion(photos.map(\.localIdentifier))
+            } catch {
+                removalFailed += photos.count
+                status = "A exclusão da fototeca não foi autorizada: \(error.localizedDescription)"
+            }
+        }
+        for entry in verifiedForRemoval {
+            if case .file(let url) = entry.source {
+                do {
+                    try FileManager.default.removeItem(at: url)
+                    removed += 1
+                    removedIDs.insert(entry.id)
+                } catch {
+                    removalFailed += 1
+                }
+            }
+        }
+        if removed > 0 {
+            entries.removeAll { removedIDs.contains($0.id) }
+            selected.subtract(removedIDs)
+            photoCount = entries.reduce(0) { count, entry in
+                if case .photo(let asset) = entry.source, asset.mediaType == .image { return count + 1 }
+                return count
+            }
+            videoCount = entries.reduce(0) { count, entry in
+                if case .photo(let asset) = entry.source, asset.mediaType == .video { return count + 1 }
+                return count
+            }
+            importedFileCount = entries.reduce(0) { count, entry in
+                if case .file = entry.source { return count + 1 }
+                return count
+            }
+        }
+        status = "\(success) guardado(s) no PC; \(removed) apagado(s) do iPhone após conferência. \(retainedComplex) Live Photo/editado(s) preservado(s). \(skipped) abaixo do mínimo; \(failed + removalFailed) falha(s)."
+    }
+
+    private func verifySavedCopy(_ receipt: UploadReceipt, at base: URL) async throws {
+        var components = URLComponents(url: base.appendingPathComponent("api/verify"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "folder", value: receipt.folder),
+            URLQueryItem(name: "name", value: receipt.name),
+            URLQueryItem(name: "size", value: String(receipt.size)),
+            URLQueryItem(name: "sha256", value: receipt.sha256)
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(accessCode, forHTTPHeaderField: "x-media-token")
+        request.timeoutInterval = 30
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw NSError(domain: "GuardaMidias", code: 4, userInfo: [NSLocalizedDescriptionKey: "O computador não confirmou a cópia; o original será mantido"])
+        }
     }
 
     private func materialize(_ entry: MediaEntry) async throws -> (URL, Bool) {

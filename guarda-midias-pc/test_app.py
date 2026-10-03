@@ -17,6 +17,12 @@ def test_upload_is_private_verified_and_deduplicated(tmp_path, monkeypatch):
     receipt = response.json()
     assert receipt["sha256"] == hashlib.sha256(content).hexdigest()
     assert (tmp_path / receipt["folder"] / receipt["name"]).read_bytes() == content
+    verification = client.get("/api/verify", headers=headers, params={key: receipt[key] for key in ("folder", "name", "size", "sha256")})
+    assert verification.json() == {"verified": True}
+    assert client.get("/api/verify", params={key: receipt[key] for key in ("folder", "name", "size", "sha256")}).status_code == 401
+    (tmp_path / receipt["folder"] / receipt["name"]).write_bytes(b"tampered-photo-content")
+    assert client.get("/api/verify", headers=headers, params={key: receipt[key] for key in ("folder", "name", "size", "sha256")}).status_code == 409
+    (tmp_path / receipt["folder"] / receipt["name"]).write_bytes(content)
     assert client.put("/api/upload?name=IMG_001.jpg", headers=headers, content=content).json()["duplicate"]
     listing = client.get("/api/files", headers=headers).json()
     assert len(listing["files"]) == 1

@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @State private var through = Date()
     @State private var internet = UserDefaults.standard.string(forKey: "serverURL") != "http://192.168.68.82:8765"
+    @State private var confirmBackupAndDelete = false
 
     var body: some View {
         NavigationStack {
@@ -64,6 +65,17 @@ struct ContentView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
                         .disabled(store.isBusy || store.selected.isEmpty)
+                        Button {
+                            confirmBackupAndDelete = true
+                        } label: {
+                            Label("Guardar e apagar do iPhone", systemImage: "externaldrive.badge.checkmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .disabled(store.isBusy || store.selected.isEmpty)
+                        Text("Só apaga após conferir a cópia no computador. Live Photos e fotos editadas permanecem no iPhone. Mídias dentro do WhatsApp precisam ser apagadas no próprio WhatsApp.")
+                            .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Escolha o período e toque em Buscar para ver o total.")
                             .foregroundStyle(.secondary)
@@ -117,10 +129,18 @@ struct ContentView: View {
                 }
                 Section("Importante") {
                     Text("O app pode ler Fotos após sua permissão e arquivos salvos em No Meu iPhone > Guarda Mídias. Mídias que estão só dentro do WhatsApp precisam ser compartilhadas para Fotos ou Arquivos.")
-                    Text("Depois da cópia confirmada, apague os originais no próprio WhatsApp para liberar espaço. Este app nunca apaga conversas ou mídias automaticamente.")
+                    Text("Se você escolher Guardar e apagar, o app só remove da fototeca ou da pasta Guarda Mídias as mídias cuja cópia foi conferida. Conteúdo que continua dentro do WhatsApp deve ser removido no próprio WhatsApp.")
                 }
             }
             .navigationTitle("Guarda Mídias")
+        }
+        .confirmationDialog("Guardar e apagar do iPhone?", isPresented: $confirmBackupAndDelete, titleVisibility: .visible) {
+            Button("Guardar e apagar as cópias conferidas", role: .destructive) {
+                Task { await store.sendSelected(deleteAfterBackup: true) }
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("O app enviará as mídias selecionadas, conferirá cada cópia no computador e só então pedirá ao iPhone para apagar os originais. Mídias sem cópia confirmada serão mantidas.")
         }
     }
 }

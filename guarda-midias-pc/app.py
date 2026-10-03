@@ -111,6 +111,21 @@ def files(request: Request) -> JSONResponse:
     return JSONResponse({"files": items, "total_bytes": sum(item["size"] for item in items)})
 
 
+@app.get("/api/verify")
+def verify(request: Request, folder: str, name: str, size: int, sha256: str) -> JSONResponse:
+    """Recheck the saved bytes before the phone offers to remove its original."""
+    require_token(request)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", folder):
+        raise HTTPException(400, "Pasta inválida")
+    filename = safe_name(name)
+    if size <= 0 or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise HTTPException(400, "Comprovante inválido")
+    path = BACKUP_DIR / folder / filename
+    if not path.is_file() or path.stat().st_size != size or hash_file(path) != sha256:
+        raise HTTPException(409, "Cópia não encontrada ou diferente do original")
+    return JSONResponse({"verified": True})
+
+
 @app.put("/api/upload")
 async def upload(request: Request, name: str) -> JSONResponse:
     require_token(request)
