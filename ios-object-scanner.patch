@@ -145,10 +145,10 @@ index 383bfad..7556c9b 100644
                  NavigationLink {
 diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
 new file mode 100644
-index 0000000..467e713
+index 0000000..80c9461
 --- /dev/null
 +++ b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,450 @@
 +import SwiftUI
 +import Combine
 +import RealityKit
@@ -373,7 +373,7 @@ index 0000000..467e713
 +        } else if case .ready = session.state {
 +            lightGuidance = .waitingForLight
 +        } else {
-+            lightGuidance = .good("Iluminação suficiente")
++            lightGuidance = .good("Sem alerta de pouca luz")
 +        }
 +
 +        if session.isPaused {
@@ -388,7 +388,7 @@ index 0000000..467e713
 +            captureGuidance = .problem("Aproxime o iPhone")
 +        } else if feedback.contains(.outOfFieldOfView) {
 +            captureGuidance = .problem("Mantenha o objeto no quadro")
-+        } else if feedback.contains(.objectNotDetected) {
++        } else if objectNotDetected(in: feedback) {
 +            captureGuidance = .problem("Centralize o objeto para detectar")
 +        } else if feedback.contains(.objectNotFlippable) && pass == .underside {
 +            captureGuidance = .problem("Difícil unir a parte de baixo")
@@ -401,6 +401,13 @@ index 0000000..467e713
 +        } else {
 +            captureGuidance = .waitingForObject
 +        }
++    }
++
++    private func objectNotDetected(in feedback: Set<ObjectCaptureSession.Feedback>) -> Bool {
++        if #available(iOS 17.4, *) {
++            return feedback.contains(.objectNotDetected)
++        }
++        return false
 +    }
 +
 +    private func finishCapture() {
