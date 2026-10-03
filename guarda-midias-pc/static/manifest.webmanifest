@@ -1,0 +1,11 @@
+{
+  "name": "Guarda Mídias",
+  "short_name": "Guarda Mídias",
+  "description": "Copie fotos e vídeos do iPhone para o computador.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#071923",
+  "theme_color": "#071923",
+  "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]
+}

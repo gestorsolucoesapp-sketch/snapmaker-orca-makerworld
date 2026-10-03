@@ -1,0 +1,43 @@
+name: Build Guarda Midias iPhone
+on:
+  push:
+    branches: [media-backup-ios]
+    paths:
+      - 'guarda-midias-ios/**'
+      - '.github/workflows/guarda-midias-ios.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate --spec guarda-midias-ios/project.yml --project guarda-midias-ios
+      - name: Build standalone iPhone app
+        run: |
+          set -o pipefail
+          xcodebuild -project guarda-midias-ios/GuardaMidias.xcodeproj -scheme GuardaMidias \
+            -configuration Release -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' build | tee build.log
+      - name: Package IPA
+        run: |
+          mkdir -p package/Payload
+          cp -R build/Build/Products/Release-iphoneos/GuardaMidias.app package/Payload/
+          cd package
+          zip -qry ../Guarda-Midias-iPhone-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Guarda-Midias-iPhone
+          path: Guarda-Midias-iPhone-unsigned.ipa
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Guarda-Midias-build-log
+          path: build.log

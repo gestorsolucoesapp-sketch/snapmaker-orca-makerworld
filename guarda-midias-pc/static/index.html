@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071923">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <title>Guarda Mídias</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#eef8f6;background:#071923}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 100% 0%,#164657 0,transparent 35%),#071923;min-height:100vh}
+    main{width:min(650px,100%);margin:auto;padding:28px 18px 60px}
+    h1{font-size:clamp(34px,8vw,48px);letter-spacing:-.05em;margin:26px 0 8px}h2{font-size:20px;margin:0 0 14px}
+    p{color:#b3c8ce;line-height:1.45}small{color:#a9c1c7}.eyebrow{color:#69e0bc;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:12px}
+    .card{border:1px solid #31535e;background:#102833ed;border-radius:24px;padding:22px;margin:18px 0;box-shadow:0 14px 35px #0003}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:12px}.pill{border-radius:99px;padding:7px 10px;background:#174b43;color:#83ebbd;font-size:13px;font-weight:700}
+    label{display:block;color:#d9e9e8;font-weight:600;margin-bottom:8px}
+    input[type=date],input[type=text]{width:100%;min-height:46px;background:#071d27;color:#fff;border:1px solid #42626d;border-radius:12px;padding:10px 12px;font:inherit}
+    input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+    .dates{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:15px 0}
+    button,.file-button{appearance:none;display:block;width:100%;min-height:52px;border:0;border-radius:15px;padding:13px 16px;background:#53d9aa;color:#05261e;font-weight:700;font-size:16px;font-family:inherit;text-align:center;cursor:pointer}
+    button:disabled{background:#526c70;color:#b4c6c6;cursor:not-allowed}.secondary{background:#21414a;color:#e8f7f3}.file-button{background:#21414a;color:#e8f7f3}
+    .hint{font-size:13px}.status{border-radius:14px;padding:12px 14px;background:#153843;color:#eaf7f5;margin:12px 0}.status.bad{background:#542e35;color:#ffd9dd}.status.good{background:#174b43;color:#a1f6ca}
+    .item{display:flex;justify-content:space-between;gap:12px;padding:13px 0;border-top:1px solid #29454d}.item strong{display:block;overflow-wrap:anywhere;font-size:14px}.item span{font-size:13px;color:#aac0c5;white-space:nowrap}
+    progress{width:100%;height:12px;accent-color:#53d9aa;margin:10px 0}.steps{padding-left:22px;color:#c4d6d9;line-height:1.5}.steps li{margin:8px 0}
+    .hidden{display:none!important}@media(max-width:420px){.dates{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">iPhone → computador</div>
+  <h1>Guarda Mídias</h1>
+  <p>Escolha um período, selecione as fotos e vídeos e guarde uma cópia verificada no disco D: do computador.</p>
+
+  <section class="card" id="accessCard">
+    <h2>Conectar ao seu computador</h2>
+    <p>Use o código de acesso mostrado no computador. O app só mostra seus arquivos depois de conectar.</p>
+    <label for="key">Código de acesso</label><input id="key" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="connect" style="margin-top:14px">Conectar</button>
+  </section>
+
+  <div id="workspace" class="hidden">
+    <section class="card">
+      <div class="row"><h2>1. Escolha o período</h2><span class="pill">Fotos e vídeos</span></div>
+      <div class="dates">
+        <div><label for="from">De</label><input id="from" type="date"></div>
+        <div><label for="to">Até</label><input id="to" type="date"></div>
+      </div>
+      <p class="hint">Depois escolha os arquivos. Para fotos, o app usa a data da imagem quando disponível; nos demais casos usa a data do arquivo. Confira a lista antes de enviar.</p>
+      <label class="file-button" for="picker">Escolher fotos e vídeos</label>
+      <input id="picker" type="file" accept="image/*,video/*,.heic,.heif,.mov" multiple>
+      <div id="selection" class="status hidden"></div>
+      <div id="selectedFiles"></div>
+      <button id="send" disabled>Enviar para o computador</button>
+      <progress id="progress" max="100" value="0" class="hidden"></progress>
+      <div id="result" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <div class="row"><h2>Já guardados no PC</h2><span id="storedTotal" class="pill">0 arquivos</span></div>
+      <div id="storedFiles"><p>Carregando…</p></div>
+    </section>
+
+    <section class="card">
+      <h2>Para liberar espaço</h2>
+      <ol class="steps">
+        <li>Espere o app confirmar a cópia de cada arquivo no computador.</li>
+        <li>No WhatsApp, abra <b>Configurações → Armazenamento e dados → Gerenciar armazenamento</b>.</li>
+        <li>Apague apenas as mídias que conferiu na lista acima. O app não apaga conversas nem fotos sozinho.</li>
+      </ol>
+      <p class="hint">Arquivos que estão só dentro do WhatsApp precisam ser salvos em Fotos ou Arquivos antes de aparecerem na seleção do iPhone.</p>
+    </section>
+  </div>
+</main>
+<script src="/exifr-lite.umd.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  let token = localStorage.getItem('mediaToken') || '';
+  let picked = [];
+  const fileDates = new WeakMap();
+  const fmt = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
+  const escapeHTML = v => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const dateValue = f => fileDates.get(f)?.value || new Date(f.lastModified);
+  const date = f => dateValue(f).toLocaleDateString('pt-BR');
+  const inRange = f => {
+    const d = dateValue(f); const day = new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+    const a = $('from').value ? new Date($('from').value+'T00:00:00').getTime() : -Infinity;
+    const b = $('to').value ? new Date($('to').value+'T00:00:00').getTime() : Infinity;
+    return day >= a && day <= b;
+  };
+  function renderSelection(){
+    const filtered = picked.filter(inRange);
+    $('selection').classList.toggle('hidden',!picked.length);
+    $('selection').textContent = `${filtered.length} de ${picked.length} arquivo(s) dentro do período · ${fmt(filtered.reduce((n,f)=>n+f.size,0))}`;
+    $('selectedFiles').innerHTML = filtered.slice(0,30).map(f=>`<div class="item"><strong>${escapeHTML(f.name)}</strong><span>${date(f)}${fileDates.get(f)?.source==='file'?'*':''} · ${fmt(f.size)}</span></div>`).join('') + (filtered.length>30?`<p class="hint">E mais ${filtered.length-30} arquivos…</p>`:'') + (filtered.some(f=>fileDates.get(f)?.source==='file')?'<p class="hint">* Data do arquivo; confira porque ela pode ser diferente da data em que a foto foi tirada.</p>':'');
+    $('send').disabled = !filtered.length;
+  }
+  async function refresh(){
+    try {
+      const r=await fetch('/api/files',{headers:{'x-media-token':token}});
+      if(!r.ok)throw Error('Código inválido ou computador indisponível');
+      const data=await r.json();
+      $('accessCard').classList.add('hidden');$('workspace').classList.remove('hidden');
+      $('storedTotal').textContent=`${data.files.length} arquivo(s)`;
+      $('storedFiles').innerHTML=data.files.length?data.files.slice(0,50).map(f=>`<div class="item"><strong>${escapeHTML(f.name)}<br><small>${escapeHTML(f.folder)}</small></strong><span>${fmt(f.size)}</span></div>`).join(''):'<p>Nenhum arquivo enviado ainda.</p>';
+    }catch(e){$('accessCard').classList.remove('hidden');$('workspace').classList.add('hidden');$('result').textContent=e.message;}
+  }
+  function uploadOne(file,onProgress){return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();xhr.open('PUT','/api/upload?name='+encodeURIComponent(file.name));xhr.setRequestHeader('x-media-token',token);
+    xhr.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded/e.total)};
+    xhr.onload=()=>{let data;try{data=JSON.parse(xhr.responseText)}catch{};xhr.status===200?resolve(data):reject(Error(data?.detail||'Falha no envio'))};
+    xhr.onerror=()=>reject(Error('Conexão perdida; confira o Wi-Fi e tente novamente'));
+    xhr.send(file);
+  })}
+  $('connect').onclick=()=>{token=$('key').value.trim();localStorage.setItem('mediaToken',token);refresh()};
+  $('key').value=token;
+  $('picker').onchange=async e=>{
+    picked=Array.from(e.target.files||[]);
+    $('selection').classList.remove('hidden');$('selection').textContent='Lendo as datas das fotos…';
+    await Promise.all(picked.map(async file=>{
+      let value=new Date(file.lastModified), source='file';
+      if(file.type.startsWith('image/') && window.exifr){
+        try{const info=await exifr.parse(file,{pick:['DateTimeOriginal','CreateDate']});const original=info?.DateTimeOriginal||info?.CreateDate;
+          if(original instanceof Date&&!isNaN(original)){value=original;source='photo'}
+        }catch{}
+      }
+      fileDates.set(file,{value,source});
+    }));
+    renderSelection();
+  };
+  $('from').onchange=renderSelection;$('to').onchange=renderSelection;
+  $('send').onclick=async()=>{
+    const files=picked.filter(inRange);$('send').disabled=true;$('progress').classList.remove('hidden');
+    let done=0;let failed=0;
+    for(let i=0;i<files.length;i++){
+      const file=files[i];$('result').innerHTML=`<div class="status">Enviando ${i+1} de ${files.length}: ${escapeHTML(file.name)}</div>`;
+      try{await uploadOne(file,p=>{$('progress').value=100*(i+p)/files.length});done++}
+      catch(e){failed++;$('result').innerHTML+=`<div class="status bad">${escapeHTML(file.name)}: ${escapeHTML(e.message)}</div>`}
+    }
+    $('progress').value=100;
+    $('result').innerHTML=`<div class="status ${failed?'bad':'good'}">${done} arquivo(s) guardado(s) no PC${failed?`; ${failed} falharam e não devem ser apagados no iPhone`:'. Confira a lista abaixo antes de apagar os originais.'}</div>`;
+    $('send').disabled=false;refresh();
+  };
+  const urlKey=new URLSearchParams(location.search).get('key');
+  if(urlKey){token=urlKey;localStorage.setItem('mediaToken',token);history.replaceState(null,'',location.pathname)}
+  if(token)refresh();
+  if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('/sw.js');
+</script>
+</body>
+</html>

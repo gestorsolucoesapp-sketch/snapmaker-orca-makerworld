@@ -1,0 +1,24 @@
+name: GuardaMidias
+options:
+  bundleIdPrefix: com.gestorsolucoesapp
+targets:
+  GuardaMidias:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+    sources:
+      - path: GuardaMidias
+    info:
+      path: GuardaMidias/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gestorsolucoesapp.guardamidias
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: '1'
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Manual
+schemes:
+  GuardaMidias:
+    build:
+      targets:
+        GuardaMidias: all
