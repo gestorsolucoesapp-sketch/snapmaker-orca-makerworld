@@ -1,10 +1,10 @@
-name: Build MakerWorld preview for Windows
+name: Build model libraries preview for Windows
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: makerworld-windows-${{ github.ref }}
@@ -21,31 +21,6 @@ jobs:
         with:
           lfs: true
           ref: ${{ github.ref_name }}
-      - name: Apply and publish the reviewed customization
-        shell: pwsh
-        run: |
-          if (Test-Path -LiteralPath 'makerworld-v2.3.6.patch') {
-            $patchFile = (Resolve-Path makerworld-v2.3.6.patch).Path
-            $patchText = [IO.File]::ReadAllText($patchFile)
-            [IO.File]::WriteAllText($patchFile, $patchText.Replace("`r`n", "`n"), [Text.UTF8Encoding]::new($false))
-            git apply --check --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
-            if ($LASTEXITCODE -ne 0) { throw 'Customization does not match the source version' }
-            git apply --exclude=.github/workflows/makerworld-windows.yml makerworld-v2.3.6.patch
-            if ($LASTEXITCODE -ne 0) { throw 'Could not apply customization' }
-            git rm -f -- makerworld-v2.3.6.patch
-            # This fork only builds manually; remove inherited scheduled/release workflows.
-            $others = git ls-files .github/workflows
-            foreach ($file in $others) {
-              if ($file -ne '.github/workflows/makerworld-windows.yml') { git rm -- $file }
-            }
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add -- src/slic3r localization/i18n/pt_BR tests/makerworld docs/MakerWorld-preview.md README.md
-            git commit -m 'Add native MakerWorld tab to Snapmaker Orca 2.3.6'
-            if ($LASTEXITCODE -ne 0) { throw 'Could not save customization commit' }
-            git push origin "HEAD:$env:GITHUB_REF_NAME"
-            if ($LASTEXITCODE -ne 0) { throw 'Could not publish customization commit' }
-          }
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: '~3.28.0'
@@ -100,10 +75,10 @@ jobs:
           cmake --build build --target install --config Release
           if ($LASTEXITCODE -ne 0) { throw 'Application packaging failed' }
           git rev-parse HEAD | Set-Content build/Snapmaker_Orca/SOURCE-COMMIT.txt
-          Copy-Item docs/MakerWorld-preview.md build/Snapmaker_Orca/LEIA-ME-MakerWorld.md
+          Copy-Item docs/Model-libraries-preview.md build/Snapmaker_Orca/LEIA-ME-Bibliotecas.md
       - uses: actions/upload-artifact@v4
         with:
-          name: Snapmaker-Orca-2.3.6-MakerWorld-preview-Windows
+          name: Snapmaker-Orca-2.3.6-ModelLibraries-preview-Windows
           path: build/Snapmaker_Orca/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
