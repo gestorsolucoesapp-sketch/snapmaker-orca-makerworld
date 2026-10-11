@@ -1,4 +1,5 @@
 #include "../../src/slic3r/GUI/MakerWorldLink.hpp"
+#include "../../src/slic3r/GUI/ModelLibraries.hpp"
 #include <iostream>
 #include <stdexcept>
 
@@ -14,6 +15,20 @@ static void     check(bool value, const char* label)
 
 int main()
 {
+    using namespace Slic3r::GUI;
+    check(ModelLibraries::libraries.size() == 5, "five model libraries");
+    check(ModelLibraries::selected(0).supports_direct_import, "MakerWorld direct import retained");
+    for (std::size_t i = 1; i < ModelLibraries::libraries.size(); ++i) {
+        const auto& library = ModelLibraries::selected(static_cast<int>(i));
+        check(!library.supports_direct_import, "other libraries use manual import");
+        check(ModelLibraries::is_selected_page(library.home, static_cast<int>(i)), "official library home");
+        check(!ModelLibraries::is_selected_page("https://" + std::string(library.domain) + ".attacker.test/",
+                                                static_cast<int>(i)), "reject lookalike domain");
+    }
+    check(!ModelLibraries::is_selected_page("http://www.printables.com/", 1), "reject HTTP library page");
+    check(!ModelLibraries::is_selected_page("https://printables.com@attacker.test/", 1), "reject forged authority");
+    check(ModelLibraries::selected(-1).supports_direct_import, "invalid selection falls back to MakerWorld");
+
     check(is_page("https://makerworld.com/pt"), "MakerWorld home");
     check(is_page("https://www.makerworld.com/en/models/123"), "www MakerWorld");
     check(is_page("HTTPS://MAKERWORLD.COM/pt"), "case-insensitive host");

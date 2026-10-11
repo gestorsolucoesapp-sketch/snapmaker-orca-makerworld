@@ -1257,7 +1257,7 @@ void MainFrame::init_tabpanel() {
 
     if (wxGetApp().is_editor()) {
         auto *makerworld = new MakerWorldPanel(m_tabpanel);
-        m_tabpanel->AddPage(makerworld, "MakerWorld", "tab_home_active", "tab_home_active", false);
+        m_tabpanel->AddPage(makerworld, _L("Model libraries"), "tab_home_active", "tab_home_active", false);
     }
 
     if (m_plater) {

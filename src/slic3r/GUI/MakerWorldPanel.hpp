@@ -5,6 +5,7 @@
 #include <wx/webview.h>
 
 class wxButton;
+class wxChoice;
 class wxStaticText;
 
 namespace Slic3r { namespace GUI {
@@ -20,10 +21,12 @@ private:
     void new_window(wxWebViewEvent& event);
     void open_model(const wxString& url);
     void update_navigation();
+    void update_guidance();
 
     wxWebView*    m_browser        = nullptr;
     wxButton*     m_back           = nullptr;
     wxButton*     m_forward        = nullptr;
+    wxChoice*     m_library        = nullptr;
     wxStaticText* m_status         = nullptr;
     bool          m_import_pending = false;
 };

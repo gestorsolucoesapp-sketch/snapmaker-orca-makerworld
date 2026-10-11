@@ -183,6 +183,15 @@ namespace pt = boost::property_tree;
 namespace Slic3r {
 namespace GUI {
 
+static bool confirm_official_download(wxWindow* parent)
+{
+    return wxMessageBox(
+               _L("This test build has custom model libraries. Installing an official build can replace them. "
+                  "Keep this build and its test profile until an updated custom build is verified.\n\n"
+                  "Open the official download page?"),
+               _L("Custom Snapmaker Orca update"), wxYES_NO | wxICON_WARNING, parent) == wxYES;
+}
+
 void GUI_App::load_filament_hot_bed_nozzle_relations()
 {
     FilamentHotBedNozzleRules::singleton().load();
@@ -2805,6 +2814,8 @@ bool GUI_App::on_init_inner()
                 wxString      description_text = wxString::FromUTF8(this->app_config->get("upgrade", "description"));
                 std::string   download_url = this->app_config->get("upgrade", "url");
                 wxString tips = wxString::Format(_L("Click to download new version in default browser: %s"), version_str);
+                tips += _L("\n\nThis test build has custom model libraries. An official installer can replace them. "
+                           "Keep the test profile and rebuild the custom version after upgrading.");
                 DownloadDialog dialog(this->mainframe,
                     tips,
                     _L("The Snapmaker Orca needs an upgrade"),
@@ -2943,7 +2954,8 @@ bool GUI_App::on_init_inner()
         m_updateDialog->Hide();
         m_updateDialog->Bind(EVT_DOWN_URL_PACK, [this](wxCommandEvent& event) {
             auto downloadUlr = m_updateDialog->getUrl();
-            wxLaunchDefaultBrowser(downloadUlr);
+            if (confirm_official_download(mainframe))
+                wxLaunchDefaultBrowser(downloadUlr);
         });
     }
     profiler.mark("mainframe construction");
@@ -3843,7 +3855,8 @@ void GUI_App::recreate_GUI(const wxString &msg_name)
         m_updateDialog->Hide();
         m_updateDialog->Bind(EVT_DOWN_URL_PACK, [this](wxCommandEvent& event) {
             auto downloadUlr = m_updateDialog->getUrl();
-            wxLaunchDefaultBrowser(downloadUlr);
+            if (confirm_official_download(mainframe))
+                wxLaunchDefaultBrowser(downloadUlr);
         });
     }
     if (is_editor())

@@ -1,11 +1,14 @@
 #include "MakerWorldPanel.hpp"
 #include "MakerWorldLink.hpp"
+#include "ModelLibraries.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
+#include "MainFrame.hpp"
 #include "Plater.hpp"
 #include "libslic3r/AppConfig.hpp"
 
 #include <wx/button.h>
+#include <wx/choice.h>
 #include <wx/dirdlg.h>
 #include <wx/filename.h>
 #include <wx/msgdlg.h>
@@ -15,27 +18,31 @@
 
 namespace Slic3r { namespace GUI {
 
-static const wxString makerworld_home = "https://makerworld.com/pt";
-
 MakerWorldPanel::MakerWorldPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
 {
     auto* layout   = new wxBoxSizer(wxVERTICAL);
     auto* toolbar  = new wxBoxSizer(wxHORIZONTAL);
+    m_library      = new wxChoice(this, wxID_ANY);
+    for (const auto& library : ModelLibraries::libraries)
+        m_library->Append(wxString::FromUTF8(library.name));
+    m_library->SetSelection(0);
     m_back         = new wxButton(this, wxID_ANY, _L("Back"));
     m_forward      = new wxButton(this, wxID_ANY, _L("Forward"));
-    auto* home     = new wxButton(this, wxID_ANY, "MakerWorld");
+    auto* home     = new wxButton(this, wxID_ANY, _L("Home"));
     auto* reload   = new wxButton(this, wxID_ANY, _L("Reload"));
     auto* external = new wxButton(this, wxID_ANY, _L("Open in browser"));
+    auto* import   = new wxButton(this, wxID_ANY, _L("Import downloaded file"));
+    toolbar->Add(m_library, 0, wxALL | wxALIGN_CENTER_VERTICAL, FromDIP(4));
     for (auto* button : {m_back, m_forward, home, reload, external})
         toolbar->Add(button, 0, wxALL, FromDIP(4));
     layout->Add(toolbar, 0, wxEXPAND);
-    m_status = new wxStaticText(
-        this, wxID_ANY,
-        _L("Open a model with 'Open in Bambu Studio'. Then select your U1 printer and review the filament mapping before slicing."));
+    m_status = new wxStaticText(this, wxID_ANY, wxEmptyString);
     layout->Add(m_status, 0, wxEXPAND | wxALL, FromDIP(8));
+    layout->Add(import, 0, wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(8));
     SetSizer(layout);
     m_back->Disable();
     m_forward->Disable();
+    update_guidance();
 
     // Do not contact MakerWorld until the user opens this tab.
     Bind(wxEVT_SHOW, [this](wxShowEvent& event) {
@@ -51,9 +58,16 @@ MakerWorldPanel::MakerWorldPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
         if (m_browser && m_browser->CanGoForward())
             m_browser->GoForward();
     });
+    m_library->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) {
+        update_guidance();
+        if (m_browser)
+            m_browser->LoadURL(wxString::FromUTF8(ModelLibraries::selected(m_library->GetSelection()).home));
+        else
+            create_browser();
+    });
     home->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
         if (m_browser)
-            m_browser->LoadURL(makerworld_home);
+            m_browser->LoadURL(wxString::FromUTF8(ModelLibraries::selected(m_library->GetSelection()).home));
         else
             create_browser();
     });
@@ -64,8 +78,16 @@ MakerWorldPanel::MakerWorldPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
             create_browser();
     });
     external->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-        const auto url = m_browser ? m_browser->GetCurrentURL() : makerworld_home;
-        wxLaunchDefaultBrowser(MakerWorldLink::is_page(url.ToStdString()) ? url : makerworld_home);
+        const auto& library = ModelLibraries::selected(m_library->GetSelection());
+        const auto  url     = m_browser ? m_browser->GetCurrentURL() : wxString::FromUTF8(library.home);
+        wxLaunchDefaultBrowser(ModelLibraries::is_selected_page(url.ToStdString(), m_library->GetSelection()) ?
+                                   url : wxString::FromUTF8(library.home));
+    });
+    import->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        if (auto* plater = wxGetApp().plater()) {
+            plater->add_model();
+            wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
+        }
     });
 }
 
@@ -97,13 +119,24 @@ void MakerWorldPanel::create_browser()
     });
     GetSizer()->Add(m_browser, 1, wxEXPAND);
     Layout();
-    m_browser->LoadURL(makerworld_home);
+    m_browser->LoadURL(wxString::FromUTF8(ModelLibraries::selected(m_library->GetSelection()).home));
 }
 
 void MakerWorldPanel::update_navigation()
 {
     m_back->Enable(m_browser && m_browser->CanGoBack());
     m_forward->Enable(m_browser && m_browser->CanGoForward());
+}
+
+void MakerWorldPanel::update_guidance()
+{
+    if (ModelLibraries::selected(m_library->GetSelection()).supports_direct_import)
+        m_status->SetLabel(_L("Use 'Open in Bambu Studio' to import a MakerWorld model. "
+                              "Select your U1 and review materials before slicing."));
+    else
+        m_status->SetLabel(_L("Download a 3MF or model file in your browser, then use 'Import downloaded file'. "
+                              "Review printer and materials before slicing."));
+    Layout();
 }
 
 void MakerWorldPanel::navigate(wxWebViewEvent& event)
@@ -137,8 +170,9 @@ void MakerWorldPanel::open_model(const wxString& url)
 {
     if (m_import_pending || !m_browser)
         return;
-    if (!MakerWorldLink::is_page(m_browser->GetCurrentURL().ToStdString()) || !MakerWorldLink::valid_open_link(url.ToStdString())) {
-        m_status->SetLabel(_L("This model link is not supported. Download its 3MF file and open it from the File menu."));
+    if (!ModelLibraries::selected(m_library->GetSelection()).supports_direct_import ||
+        !MakerWorldLink::is_page(m_browser->GetCurrentURL().ToStdString()) || !MakerWorldLink::valid_open_link(url.ToStdString())) {
+        m_status->SetLabel(_L("This model link is not supported. Download its 3MF file and use 'Import downloaded file'."));
         Layout();
         return;
     }
