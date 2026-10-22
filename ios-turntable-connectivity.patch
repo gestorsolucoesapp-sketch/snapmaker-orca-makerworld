@@ -1,5 +1,5 @@
 diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
-index 7556c9b..dccd370 100644
+index 7556c9b..6ae6d8e 100644
 --- a/ios/SnapSliceNativeHarness/ContentView.swift
 +++ b/ios/SnapSliceNativeHarness/ContentView.swift
 @@ -1750,6 +1750,10 @@ struct ContentView: View {
@@ -13,6 +13,67 @@ index 7556c9b..dccd370 100644
              if let updated = model.printerUpdatedAt {
                  Text("Last successful update \(updated, style: .relative) ago")
                      .font(.caption2).foregroundStyle(.secondary)
+@@ -1942,11 +1946,21 @@ private struct U1CameraCard: View {
+                 }
+             }.font(.caption).foregroundStyle(.secondary)
+             if fastVideoAvailable {
+-                Button { showingFastVideo = true } label: {
+-                    Label("Ampliar vídeo", systemImage: "arrow.up.left.and.arrow.down.right")
++                Button {
++                    if fastVideoFailed {
++                        videoPlaying = false
++                        fastVideoFailed = false
++                    } else {
++                        showingFastVideo = true
++                    }
++                } label: {
++                    Label(fastVideoFailed ? "Tentar vídeo novamente" : "Ampliar vídeo",
++                          systemImage: fastVideoFailed ? "arrow.clockwise" : "arrow.up.left.and.arrow.down.right")
+                         .frame(maxWidth: .infinity)
+                 }.buttonStyle(.borderedProminent)
+-                Text("Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
++                Text(fastVideoFailed
++                     ? "Vídeo indisponível; exibindo fotos da câmera. Feche outros visualizadores e tente novamente."
++                     : "Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
+                     .font(.caption2).foregroundStyle(.secondary)
+             }
+             Text("Camera available on your local network or connected VPN.")
+@@ -2095,17 +2109,31 @@ private struct U1InlineCamera: UIViewRepresentable {
+         // Observe decoded frames, not merely an HTTP success or an ICE connection.
+         let script = """
+         (() => {
+-          let lastTime = -1, lastFrame = Date.now(), reported = false;
++          let lastTime = -1, lastFrame = Date.now(), reported = false, failed = false;
++          function fail() {
++            if (failed) return;
++            failed = true;
++            clearInterval(timer);
++            window.webkit.messageHandlers.cameraPlayback.postMessage(false);
++          }
+           const timer = setInterval(() => {
+             const video = document.querySelector('video');
+             if (video && video.readyState >= 2 && video.currentTime > lastTime) {
+               lastTime = video.currentTime; lastFrame = Date.now();
+               if (!reported) { window.webkit.messageHandlers.cameraPlayback.postMessage(true); reported = true; }
+             }
+-            if (Date.now() - lastFrame > 20000) {
+-              clearInterval(timer); window.webkit.messageHandlers.cameraPlayback.postMessage(false);
+-            }
++            if (Date.now() - lastFrame > 20000) fail();
+           }, 1000);
++          const status = document.getElementById('status');
++          if (status) {
++            const observer = new MutationObserver(() => {
++              // The U1 can return HTTP 200 with {error:"max clients reached"}.
++              // Its page retries invalid SDP forever; restore snapshots instead.
++              if (status.classList.contains('error')) fail();
++            });
++            observer.observe(status, {attributes:true, childList:true, characterData:true, subtree:true});
++            window.addEventListener('pagehide', () => observer.disconnect(), {once:true});
++          }
+           window.addEventListener('pagehide', () => clearInterval(timer), {once:true});
+         })();
+         """
 diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
 index 80c9461..da6879c 100644
 --- a/ios/SnapSliceNativeHarness/ObjectScannerView.swift
