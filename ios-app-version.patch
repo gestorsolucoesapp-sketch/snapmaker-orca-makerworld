@@ -1,0 +1,77 @@
+diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
+--- a/ios/SnapSliceNativeHarness/ContentView.swift
++++ b/ios/SnapSliceNativeHarness/ContentView.swift
+@@ -5,6 +5,14 @@ import Darwin
+ import SafariServices
+ import WebKit
+ 
++private enum OrionAppVersion {
++    static var display: String {
++        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
++        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
++        return "Versão \(version) (build \(build))"
++    }
++}
++
+ enum SliceQuality: String, CaseIterable, Identifiable, Codable {
+     case fine = "Fine", standard = "Standard", draft = "Draft"
+     var id: String { rawValue }
+@@ -1209,6 +1217,9 @@ struct ContentView: View {
+                                  isActive: selectedTab == 0)
+                 }
+                 if homeHasActivePrint { homeImportCard }
++                Text("Orion U1 Preview · \(OrionAppVersion.display)")
++                    .font(.caption2).foregroundStyle(.secondary)
++                    .frame(maxWidth: .infinity)
+             }.padding(.horizontal, 16).padding(.bottom, 32)
+         }
+         .background(Color(uiColor: .systemGroupedBackground))
+@@ -2305,7 +2316,8 @@ struct SnapSliceAboutView: View {
+         ScrollView {
+             VStack(alignment: .leading, spacing: 18) {
+                 Text("SnapSlice · Kiri Edition").font(.title2.bold())
+-                Text("Build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "2") · Kiri:Moto STL / 3MF slicing for Snapmaker U1 with a 0.4 mm nozzle.")
++                Text(OrionAppVersion.display)
++                Text("Kiri:Moto STL / 3MF slicing for Snapmaker U1 with a 0.4 mm nozzle.")
+                 Text("Models and slicing stay on this iPhone. Files are sent only to the printer address you enter when you choose Upload. 3MF project settings and colours are not imported.")
+                 Text("Open-source licenses").font(.headline)
+                 Text(licenses).font(.caption.monospaced()).textSelection(.enabled)
+diff --git a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+--- a/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
++++ b/ios/SnapSliceNativeHarness.xcodeproj/project.pbxproj
+@@ -263,7 +263,7 @@
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				CODE_SIGN_STYLE = Automatic;
+-				CURRENT_PROJECT_VERSION = 23;
++				CURRENT_PROJECT_VERSION = 24;
+ 				GENERATE_INFOPLIST_FILE = NO;
+ 				INFOPLIST_FILE = Resources/AppInfo.plist;
+ 				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
+@@ -273,7 +273,7 @@
+ 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+ 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+-				MARKETING_VERSION = 2.0.7;
++				MARKETING_VERSION = 2.0.8;
+ 				OTHER_LDFLAGS = "$(inherited)";
+ 				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+@@ -291,7 +291,7 @@
+ 			buildSettings = {
+ 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+ 				CODE_SIGN_STYLE = Automatic;
+-				CURRENT_PROJECT_VERSION = 23;
++				CURRENT_PROJECT_VERSION = 24;
+ 				GENERATE_INFOPLIST_FILE = NO;
+ 				INFOPLIST_FILE = Resources/AppInfo.plist;
+ 				INFOPLIST_KEY_CFBundleDisplayName = "Orion U1 Preview";
+@@ -301,7 +301,7 @@
+ 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
+ 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+ 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+-				MARKETING_VERSION = 2.0.7;
++				MARKETING_VERSION = 2.0.8;
+ 				OTHER_LDFLAGS = "$(inherited)";
+ 				PRODUCT_BUNDLE_IDENTIFIER = com.gestorsolucoesapp.orion.u1;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
