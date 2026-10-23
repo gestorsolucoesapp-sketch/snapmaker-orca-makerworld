@@ -1,5 +1,5 @@
 diff --git a/ios/SnapSliceNativeHarness/ContentView.swift b/ios/SnapSliceNativeHarness/ContentView.swift
-index 7556c9b..6ae6d8e 100644
+index 7556c9b..9600f3a 100644
 --- a/ios/SnapSliceNativeHarness/ContentView.swift
 +++ b/ios/SnapSliceNativeHarness/ContentView.swift
 @@ -1750,6 +1750,10 @@ struct ContentView: View {
@@ -13,32 +13,102 @@ index 7556c9b..6ae6d8e 100644
              if let updated = model.printerUpdatedAt {
                  Text("Last successful update \(updated, style: .relative) ago")
                      .font(.caption2).foregroundStyle(.secondary)
-@@ -1942,11 +1946,21 @@ private struct U1CameraCard: View {
+@@ -1897,9 +1901,10 @@ private struct U1CameraCard: View {
+     @State private var showingFastVideo = false
+     @State private var fastVideoAvailable = false
+     @State private var fastVideoFailed = false
++    @State private var mjpegFailed = false
+     @State private var videoPlaying = false
+     private var usesFastVideo: Bool {
+-        isActive && scenePhase == .active && fastVideoAvailable && !fastVideoFailed && !showingFastVideo
++        isActive && scenePhase == .active && fastVideoAvailable && !mjpegFailed && !showingFastVideo
+     }
+ 
+     private var fastVideoURL: URL? {
+@@ -1911,6 +1916,15 @@ private struct U1CameraCard: View {
+         return parts.url
+     }
+ 
++    private var mjpegURL: URL? {
++        guard let snapshotURL,
++              var parts = URLComponents(url: snapshotURL, resolvingAgainstBaseURL: false) else { return nil }
++        parts.path = "/webcam/stream.mjpg"
++        parts.query = nil
++        parts.fragment = nil
++        return parts.url
++    }
++
+     private var shouldMonitor: Bool { isActive && scenePhase == .active && snapshotURL != nil && !showingFastVideo && !usesFastVideo }
+     private var monitorID: String? { shouldMonitor ? snapshotURL?.absoluteString : nil }
+ 
+@@ -1942,11 +1956,24 @@ private struct U1CameraCard: View {
                  }
              }.font(.caption).foregroundStyle(.secondary)
              if fastVideoAvailable {
 -                Button { showingFastVideo = true } label: {
 -                    Label("Ampliar vídeo", systemImage: "arrow.up.left.and.arrow.down.right")
 +                Button {
-+                    if fastVideoFailed {
++                    if mjpegFailed {
 +                        videoPlaying = false
 +                        fastVideoFailed = false
++                        mjpegFailed = false
 +                    } else {
 +                        showingFastVideo = true
 +                    }
 +                } label: {
-+                    Label(fastVideoFailed ? "Tentar vídeo novamente" : "Ampliar vídeo",
-+                          systemImage: fastVideoFailed ? "arrow.clockwise" : "arrow.up.left.and.arrow.down.right")
++                    Label(mjpegFailed ? "Tentar vídeo novamente" : "Ampliar vídeo",
++                          systemImage: mjpegFailed ? "arrow.clockwise" : "arrow.up.left.and.arrow.down.right")
                          .frame(maxWidth: .infinity)
                  }.buttonStyle(.borderedProminent)
 -                Text("Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
-+                Text(fastVideoFailed
-+                     ? "Vídeo indisponível; exibindo fotos da câmera. Feche outros visualizadores e tente novamente."
++                Text(mjpegFailed
++                     ? "Vídeo indisponível; exibindo fotos da câmera. Tente novamente quando a conexão melhorar."
++                     : fastVideoFailed
++                     ? "Vídeo alternativo da U1. O WebRTC está ocupado; feche outros visualizadores para liberá-lo."
 +                     : "Vídeo contínuo pela rede local ou VPN. A fluidez depende da conexão.")
                      .font(.caption2).foregroundStyle(.secondary)
              }
              Text("Camera available on your local network or connected VPN.")
-@@ -2095,17 +2109,31 @@ private struct U1InlineCamera: UIViewRepresentable {
+@@ -1956,6 +1983,7 @@ private struct U1CameraCard: View {
+         .task(id: isActive ? fastVideoURL : nil) {
+             fastVideoAvailable = false
+             fastVideoFailed = false
++            mjpegFailed = false
+             videoPlaying = false
+             guard isActive, let fastVideoURL else { return }
+             let request = URLRequest(url: fastVideoURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+@@ -1968,7 +1996,9 @@ private struct U1CameraCard: View {
+             }
+         }
+         .sheet(isPresented: $showingFastVideo) {
+-            if let fastVideoURL { U1FastCameraBrowser(url: fastVideoURL).ignoresSafeArea() }
++            if let url = fastVideoFailed ? mjpegURL : fastVideoURL {
++                U1FastCameraBrowser(url: url).ignoresSafeArea()
++            }
+         }
+         .onChange(of: isActive) { _, active in
+             if !active { showingFastVideo = false }
+@@ -2007,9 +2037,16 @@ private struct U1CameraCard: View {
+ 
+     @ViewBuilder private var cameraImage: some View {
+         if usesFastVideo, let fastVideoURL {
+-            U1InlineCamera(url: fastVideoURL) { playing in
+-                videoPlaying = playing
+-                if !playing { fastVideoFailed = true }
++            if fastVideoFailed, let mjpegURL {
++                U1MJPEGCamera(url: mjpegURL) { playing in
++                    videoPlaying = playing
++                    if !playing { mjpegFailed = true }
++                }
++            } else {
++                U1InlineCamera(url: fastVideoURL) { playing in
++                    videoPlaying = playing
++                    if !playing { fastVideoFailed = true }
++                }
+             }
+         } else if let frame {
+             Image(uiImage: frame).resizable().scaledToFit()
+@@ -2095,17 +2132,31 @@ private struct U1InlineCamera: UIViewRepresentable {
          // Observe decoded frames, not merely an HTTP success or an ICE connection.
          let script = """
          (() => {
@@ -74,6 +144,66 @@ index 7556c9b..6ae6d8e 100644
            window.addEventListener('pagehide', () => clearInterval(timer), {once:true});
          })();
          """
+@@ -2127,6 +2178,59 @@ private struct U1InlineCamera: UIViewRepresentable {
+     }
+ }
+ 
++private struct U1MJPEGCamera: UIViewRepresentable {
++    let url: URL
++    let onPlayback: (Bool) -> Void
++
++    final class Coordinator: NSObject, WKScriptMessageHandler {
++        var onPlayback: (Bool) -> Void
++        init(onPlayback: @escaping (Bool) -> Void) { self.onPlayback = onPlayback }
++        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
++            guard let playing = message.body as? Bool else { return }
++            onPlayback(playing)
++        }
++    }
++
++    func makeCoordinator() -> Coordinator { Coordinator(onPlayback: onPlayback) }
++    func makeUIView(context: Context) -> WKWebView {
++        let config = WKWebViewConfiguration()
++        config.userContentController.add(context.coordinator, name: "cameraPlayback")
++        let view = WKWebView(frame: .zero, configuration: config)
++        view.isOpaque = false
++        view.backgroundColor = .black
++        view.scrollView.isScrollEnabled = false
++        let html = """
++        <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
++        <style>html,body{margin:0;width:100%;height:100%;background:#000}
++        img{width:100%;height:100%;object-fit:contain}</style></head><body>
++        <img id="stream" src="\(url.absoluteString)">
++        <script>
++        (() => {
++          const image = document.getElementById('stream');
++          let reported = false, failed = false;
++          const report = value => window.webkit.messageHandlers.cameraPlayback.postMessage(value);
++          image.onerror = () => { if (!failed) { failed = true; report(false); } };
++          const timer = setInterval(() => {
++            if (!reported && image.naturalWidth > 0) {
++              reported = true; report(true);
++            }
++          }, 250);
++          setTimeout(() => { if (!reported && !failed) { failed = true; report(false); } }, 10000);
++          window.addEventListener('pagehide', () => clearInterval(timer), {once:true});
++        })();
++        </script></body></html>
++        """
++        view.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
++        return view
++    }
++    func updateUIView(_ view: WKWebView, context: Context) { context.coordinator.onPlayback = onPlayback }
++    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
++        view.configuration.userContentController.removeScriptMessageHandler(forName: "cameraPlayback")
++        view.stopLoading()
++        view.loadHTMLString("", baseURL: nil)
++    }
++}
++
+ private struct U1FastCameraBrowser: UIViewControllerRepresentable {
+     let url: URL
+ 
 diff --git a/ios/SnapSliceNativeHarness/ObjectScannerView.swift b/ios/SnapSliceNativeHarness/ObjectScannerView.swift
 index 80c9461..da6879c 100644
 --- a/ios/SnapSliceNativeHarness/ObjectScannerView.swift
